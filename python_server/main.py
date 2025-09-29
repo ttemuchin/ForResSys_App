@@ -68,52 +68,6 @@ async def health_check():
         "model_info": model.get_model_info()
     }
 
-@app.post("/predict", summary="Одиночное предсказание")
-async def predict(request: PredictionRequest):
-    """Обработка одиночного запроса"""
-    try:
-        logger.info(f"Received prediction request: {request.input_data}")
-        
-        # Обработка через модель
-        result = model.process_batch([request.input_data])[0]
-        
-        return JSONResponse(content=result)
-        
-    except Exception as e:
-        logger.error(f"Prediction error: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Processing error: {str(e)}"
-        )
-
-@app.post("/predict/batch", summary="Пакетная обработка")
-async def predict_batch(request: BatchPredictionRequest):
-    """Обработка батча запросов"""
-    try:
-        logger.info(f"Received batch request with {len(request.inputs)} items")
-        
-        if len(request.inputs) > 100:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Batch size too large. Max 100 items."
-            )
-        
-        # Обработка батча
-        results = model.process_batch(request.inputs)
-        
-        return {
-            "batch_id": f"batch_{datetime.now().timestamp()}",
-            "processed_count": len(results),
-            "results": results
-        }
-        
-    except Exception as e:
-        logger.error(f"Batch prediction error: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Batch processing error: {str(e)}"
-        )
-
 @app.get("/model/info")
 async def get_model_info():
     """Получение информации о модели"""
@@ -138,13 +92,13 @@ async def train_model(request: dict):
             "status": "success",
             "message": f"Training completed for {base_name}",
             "model_type": model_type,
-            "accuracy": 0.95  # пример метрики
+            "accuracy": 0.95
         }
         
     except Exception as e:
         return {"status": "error", "message": str(e)}
     
-@app.post("/predict_with_model")
+@app.post("/predict")
 async def predict_with_model(request: dict):
     try:
         file_path = request.get("file_path")

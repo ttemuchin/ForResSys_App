@@ -16,8 +16,6 @@ public:
     
     // Специальные методы сервера
     bool healthCheck();
-    std::string predict(const std::string& input_data);
-    std::string batchPredict(const std::vector<std::string>& inputs);
     std::string trainModel(const std::string& base_name, const std::string& base_path, 
                       const std::string& config_path, const std::string& model_type);
     std::string predictWithModel(const std::string& file_path, const std::string& model_name);

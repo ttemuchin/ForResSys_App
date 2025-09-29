@@ -92,16 +92,6 @@ bool HttpClient::healthCheck() {
     return false;
 }
 
-std::string HttpClient::predict(const std::string& input_data) {
-    Json::Value request;
-    request["input_data"] = input_data;
-    
-    Json::StreamWriterBuilder writer;
-    std::string json_request = Json::writeString(writer, request);
-    
-    return post("/predict", json_request);
-}
-
 std::string HttpClient::trainModel(const std::string& base_name, const std::string& base_path,
                                   const std::string& config_path, const std::string& model_type) {
     Json::Value request;
@@ -124,5 +114,5 @@ std::string HttpClient::predictWithModel(const std::string& file_path, const std
     Json::StreamWriterBuilder writer;
     std::string json_request = Json::writeString(writer, request);
     
-    return post("/predict_with_model", json_request);
+    return post("/predict", json_request);
 }

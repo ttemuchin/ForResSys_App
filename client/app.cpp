@@ -146,7 +146,7 @@ public:
         if (server_thread_.joinable()) {
             server_thread_.detach();
         }
-        std::cout << "Server stopped(hard)." << std::endl;
+        std::cout << "Server stopped" << std::endl;
     }
     
     void makePrediction() {
@@ -155,19 +155,16 @@ public:
             return;
         }
         
-        // Запрашиваем путь к файлу
         std::cout << "Enter path to your data(.txt):" << std::endl;
         std::cout << "> ";
         std::string file_path;
         std::getline(std::cin, file_path);
         
-        // Проверяем существование файла
         if (!fs::exists(file_path)) {
             std::cerr << "File not found: " << file_path << std::endl;
             return;
         }
         
-        // Выбор модели
         std::cout << "Choose model:" << std::endl;
         std::cout << "1. SVR" << std::endl;
         std::cout << "2. Convolutional Layers" << std::endl;
@@ -191,10 +188,8 @@ public:
         
         std::cout << "Making prediction for file: " << file_path << " with model: " << model_name << std::endl;
         
-        // Отправляем запрос на сервер
         std::string result = http_client_.predictWithModel(file_path, model_name);
         
-        // Выводим результат
         std::cout << "Results saved to file - " << result << std::endl;
     }
     
@@ -388,7 +383,6 @@ public:
 
     ///////////
     void startLearning() {
-        // Получаем список доступных баз
         auto bases = findLearningBases();
         
         if (bases.empty()) {
@@ -396,13 +390,11 @@ public:
             return;
         }
         
-        // Выводим список баз
         std::cout << "Choose the learning base:" << std::endl;
         for (size_t i = 0; i < bases.size(); ++i) {
             std::cout << (i + 1) << ". " << bases[i] << std::endl;
         }
         
-        // Выбор базы
         std::cout << "Enter number: ";
         std::string choice_str;
         std::getline(std::cin, choice_str);
@@ -423,13 +415,11 @@ public:
         std::string base_path = getLearningBasePath(selected_base);
         std::string config_path = getLearningBaseConfigPath(selected_base);
         
-        // Проверяем существование файлов
         if (!fs::exists(base_path) || !fs::exists(config_path)) {
             std::cout << "Selected base files not found!" << std::endl;
             return;
         }
         
-        // Выбор модели
         std::cout << "Choose model:" << std::endl;
         std::cout << "1. SVR" << std::endl;
         std::cout << "2. Convolutional Layers" << std::endl;
@@ -451,7 +441,6 @@ public:
             return;
         }
         
-        // Подтверждение
         std::cout << "Start Learning? y/n: ";
         std::string confirm;
         std::getline(std::cin, confirm);
@@ -461,7 +450,6 @@ public:
             return;
         }
         
-        // Отправка на сервер
         if (!http_client_.healthCheck()) {
             std::cout << "Server is not available. Please start the server first." << std::endl;
             return;
@@ -469,17 +457,6 @@ public:
         
         std::cout << "Starting learning process..." << std::endl;
         
-        // Подготавливаем JSON запрос
-        // Json::Value request;
-        // request["base_name"] = selected_base;
-        // request["base_path"] = base_path;
-        // request["config_path"] = config_path;
-        // request["model_type"] = model_name;
-        
-        // Json::StreamWriterBuilder writer;
-        // std::string json_request = Json::writeString(writer, request);
-        
-        // Отправляем на сервер
         std::string response = http_client_.trainModel(selected_base, base_path, config_path, model_name);
         std::cout << "Server response: " << response << std::endl;
     }
@@ -487,12 +464,12 @@ public:
     void showMenu() {
         std::cout << "\n=== ML Application ===" << std::endl;
         std::cout << "1. Start server" << std::endl;
-        std::cout << "2. Make prediction" << std::endl;
-        std::cout << "3. Check server health" << std::endl;
-        std::cout << "4. Exit" << std::endl;
-        std::cout << "5. Stop server" << std::endl;
-        std::cout << "6. Upload learning base" << std::endl;
-        std::cout << "7. Start learning" << std::endl;
+        std::cout << "2. Upload learning base" << std::endl;
+        std::cout << "3. Start learning" << std::endl;
+        std::cout << "4. Make prediction" << std::endl;
+        std::cout << "5. Check server health" << std::endl;
+        std::cout << "6. Stop server" << std::endl;
+        std::cout << "7. Exit" << std::endl;
         std::cout << "Choose option: ";
     }
     
@@ -508,28 +485,28 @@ public:
             if (choice == "1") {
                 startServer();
             } else if (choice == "2") {
-                makePrediction();
+                uploadLearningBase();
             } else if (choice == "3") {
+                startLearning();
+            } else if (choice == "4") {
+                makePrediction();
+            } else if (choice == "5") {
                 if (http_client_.healthCheck()) {
                     std::cout << "✓ Server is healthy!" << std::endl;
                 } else {
                     std::cout << "✗ Server is not available!" << std::endl;
                 }
-            } else if (choice == "4") {
-                break;
-            } else if (choice == "5") {
-                stopServerSoft();
             } else if (choice == "6") {
-                uploadLearningBase();
+                stopServerSoft();
             } else if (choice == "7") {
-                startLearning();
+                break;
             } else {
                 std::cout << "Invalid option!" << std::endl;
             }
         }
         
         stopServer();
-        std::cout << "Application closed." << std::endl;
+        std::cout << "Application closed" << std::endl;
     }
 };
 

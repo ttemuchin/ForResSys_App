@@ -9,6 +9,8 @@ public:
     ConfigLoader(const std::string& filename);
     
     bool load();
+    std::string getAppDataPath(const std::string& app_name = "ResSysApp");
+
     std::string getString(const std::string& section, const std::string& key, 
                          const std::string& default_value = "");
     int getInt(const std::string& section, const std::string& key, int default_value = 0);

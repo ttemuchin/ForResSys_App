@@ -3,6 +3,7 @@
 #include <sstream>
 #include <algorithm>
 #include <cctype>
+#include <shlobj.h>
 
 ConfigLoader::ConfigLoader(const std::string& filename) : filename_(filename) {}
 
@@ -63,6 +64,15 @@ int ConfigLoader::getInt(const std::string& section, const std::string& key, int
         }
     }
     return default_value;
+}
+
+std::string ConfigLoader::getAppDataPath(const std::string& app_name) {
+    char app_data_path[MAX_PATH];
+    if (SUCCEEDED(SHGetFolderPathA(NULL, CSIDL_APPDATA, NULL, 0, app_data_path))) {
+        std::string path = std::string(app_data_path) + "\\" + app_name;
+        return path;
+    }
+    return ""; // Fallback
 }
 
 void ConfigLoader::trim(std::string& str) {

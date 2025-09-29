@@ -101,3 +101,28 @@ std::string HttpClient::predict(const std::string& input_data) {
     
     return post("/predict", json_request);
 }
+
+std::string HttpClient::trainModel(const std::string& base_name, const std::string& base_path,
+                                  const std::string& config_path, const std::string& model_type) {
+    Json::Value request;
+    request["base_name"] = base_name;
+    request["base_path"] = base_path;
+    request["config_path"] = config_path;
+    request["model_type"] = model_type;
+    
+    Json::StreamWriterBuilder writer;
+    std::string json_request = Json::writeString(writer, request);
+    
+    return post("/train", json_request);
+}
+
+std::string HttpClient::predictWithModel(const std::string& file_path, const std::string& model_name) {
+    Json::Value request;
+    request["file_path"] = file_path;
+    request["model_name"] = model_name;
+    
+    Json::StreamWriterBuilder writer;
+    std::string json_request = Json::writeString(writer, request);
+    
+    return post("/predict_with_model", json_request);
+}

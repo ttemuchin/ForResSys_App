@@ -1,3 +1,4 @@
+from pathlib import Path
 import sys
 import os
 import signal
@@ -117,6 +118,61 @@ async def predict_batch(request: BatchPredictionRequest):
 async def get_model_info():
     """Получение информации о модели"""
     return model.get_model_info()
+
+@app.post("/train")
+async def train_model(request: dict):
+    try:
+        base_name = request.get("base_name")
+        base_path = request.get("base_path") 
+        config_path = request.get("config_path")
+        model_type = request.get("model_type")
+        
+        # Здесь ваша логика обучения
+        print(f"Starting training: {base_name} with {model_type}")
+        
+        # Имитация обучения
+        import time
+        time.sleep(2)
+        
+        return {
+            "status": "success",
+            "message": f"Training completed for {base_name}",
+            "model_type": model_type,
+            "accuracy": 0.95  # пример метрики
+        }
+        
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+    
+@app.post("/predict_with_model")
+async def predict_with_model(request: dict):
+    try:
+        file_path = request.get("file_path")
+        model_name = request.get("model_name")
+        
+        # Имитация работы с файлом
+        print(f"Processing file: {file_path} with model: {model_name}")
+        
+        # Создаем папку для результатов
+        output_dir = Path(os.getenv('APPDATA')) / "ResSysApp" / "data" / "Output"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Генерируем имя файла для результата
+        import uuid
+        result_filename = f"prediction_{uuid.uuid4().hex[:8]}.txt"
+        result_path = output_dir / result_filename
+        
+        # Имитация сохранения результатов
+        with open(result_path, 'w') as f:
+            f.write(f"Prediction results for {file_path}\n")
+            f.write(f"Model: {model_name}\n")
+            f.write(f"Result: Mock prediction completed successfully\n")
+            f.write(f"Confidence: 0.95\n")
+        
+        return str(result_path)
+        
+    except Exception as e:
+        return f"Error: {str(e)}"
 
 @app.get("/config")
 async def get_server_config():

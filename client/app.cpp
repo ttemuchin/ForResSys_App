@@ -40,7 +40,7 @@ private:
             }
             
             for (const auto& entry : fs::directory_iterator(learning_base_dir_)) {
-                if (entry.is_regular_file() && entry.path().extension() == ".dat") {
+                if (entry.is_regular_file() && entry.path().extension() == ".txt") {
                     bases.push_back(entry.path().stem().string());
                 }
             }
@@ -51,7 +51,7 @@ private:
     }
 
     std::string getLearningBasePath(const std::string& base_name) {
-        return learning_base_dir_ + "\\" + base_name + ".dat";
+        return learning_base_dir_ + "\\" + base_name + ".txt";
     }
 
     std::string getLearningBaseConfigPath(const std::string& base_name) {
@@ -155,6 +155,7 @@ public:
             return;
         }
         
+        // Запрашиваем путь к файлу
         std::cout << "Enter path to your data(.txt):" << std::endl;
         std::cout << "> ";
         std::string file_path;
@@ -165,6 +166,37 @@ public:
             return;
         }
         
+        // Выбор обучающей базы
+        auto bases = findLearningBases();
+        if (bases.empty()) {
+            std::cout << "No trained models found. Please train a model first." << std::endl;
+            return;
+        }
+        
+        std::cout << "Choose the training base:" << std::endl;
+        for (size_t i = 0; i < bases.size(); ++i) {
+            std::cout << (i + 1) << ". " << bases[i] << std::endl;
+        }
+        
+        std::cout << "Enter number: ";
+        std::string base_choice_str;
+        std::getline(std::cin, base_choice_str);
+        
+        int base_choice;
+        try {
+            base_choice = std::stoi(base_choice_str);
+            if (base_choice < 1 || base_choice > static_cast<int>(bases.size())) {
+                std::cout << "Invalid choice!" << std::endl;
+                return;
+            }
+        } catch (...) {
+            std::cout << "Invalid number!" << std::endl;
+            return;
+        }
+        
+        std::string selected_base = bases[base_choice - 1];
+        
+        // Выбор модели
         std::cout << "Choose model:" << std::endl;
         std::cout << "1. SVR" << std::endl;
         std::cout << "2. Convolutional Layers" << std::endl;
@@ -186,10 +218,10 @@ public:
             return;
         }
         
-        std::cout << "Making prediction for file: " << file_path << " with model: " << model_name << std::endl;
+        std::cout << "Making prediction..." << std::endl;
         
-        std::string result = http_client_.predictWithModel(file_path, model_name);
-        
+        // Отправляем запрос на сервер
+        std::string result = http_client_.predictWithModel(file_path, model_name, selected_base);
         std::cout << "Results saved to file - " << result << std::endl;
     }
     

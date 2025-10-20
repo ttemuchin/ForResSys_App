@@ -14,6 +14,8 @@ from datetime import datetime
 
 from config import HOST, PORT, DEBUG, MODEL_CONFIG
 from moked_model import model
+import ml.predict as PRED
+import ml.train as TRAIN
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("PY_Server")
@@ -81,52 +83,63 @@ async def train_model(request: dict):
         config_path = request.get("config_path")
         model_type = request.get("model_type")
         
-        # Здесь ваша логика обучения
-        print(f"Starting training: {base_name} with {model_type}")
-        
-        # Имитация обучения
-        import time
-        time.sleep(2)
+        # Запускаем обучение и получаем результаты
+        best_loss, weights_path, accuracy = TRAIN.train(base_name, base_path, config_path, model_type)
         
         return {
             "status": "success",
             "message": f"Training completed for {base_name}",
             "model_type": model_type,
-            "accuracy": 0.95
+            "accuracy": accuracy,
+            "best_loss": best_loss,
+            "weights_path": weights_path
         }
         
     except Exception as e:
         return {"status": "error", "message": str(e)}
     
+# @app.post("/predict")
+# async def predict_with_model(request: dict):
+#     try:
+#         file_path = request.get("file_path")
+#         model_name = request.get("model_name")
+#         base_name = request.get("base_name")
+#         PRED.pred(file_path, model_name, base_name)
+            
+#         # Создаем папку для результатов
+#         output_dir = Path(os.getenv('APPDATA')) / "ResSysApp" / "data" / "Output"
+#         output_dir.mkdir(parents=True, exist_ok=True)
+        
+#         # Генерируем имя файла для результата
+               
+#         # сохранения результатов
+               
+#     except Exception as e:
+#         return f"Error: {str(e)}"
+# import ml.pred as PRED
+
 @app.post("/predict")
 async def predict_with_model(request: dict):
     try:
         file_path = request.get("file_path")
-        model_name = request.get("model_name")
+        model_name = request.get("model_name") 
+        base_name = request.get("base_name")
         
-        # Имитация работы с файлом
-        print(f"Processing file: {file_path} with model: {model_name}")
+        if not file_path or not model_name or not base_name:
+            return {"status": "error", "message": "Missing required parameters"}
         
-        # Создаем папку для результатов
-        output_dir = Path(os.getenv('APPDATA')) / "ResSysApp" / "data" / "Output"
-        output_dir.mkdir(parents=True, exist_ok=True)
+        # Запускаем предсказание
+        output_path, metrics = PRED.pred(file_path, model_name, base_name)
         
-        # Генерируем имя файла для результата
-        import uuid
-        result_filename = f"prediction_{uuid.uuid4().hex[:8]}.txt"
-        result_path = output_dir / result_filename
-        
-        # Имитация сохранения результатов
-        with open(result_path, 'w') as f:
-            f.write(f"Prediction results for {file_path}\n")
-            f.write(f"Model: {model_name}\n")
-            f.write(f"Result: Mock prediction completed successfully\n")
-            f.write(f"Confidence: 0.95\n")
-        
-        return str(result_path)
+        return {
+            "status": "success",
+            "output_path": output_path,
+            "metrics": metrics,
+            "message": f"Prediction completed using {model_name} model trained on {base_name}"
+        }
         
     except Exception as e:
-        return f"Error: {str(e)}"
+        return {"status": "error", "message": str(e)}
 
 @app.get("/config")
 async def get_server_config():

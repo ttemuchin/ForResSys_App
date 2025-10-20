@@ -18,7 +18,7 @@ public:
     bool healthCheck();
     std::string trainModel(const std::string& base_name, const std::string& base_path, 
                       const std::string& config_path, const std::string& model_type);
-    std::string predictWithModel(const std::string& file_path, const std::string& model_name);
+    std::string predictWithModel(const std::string& file_path, const std::string& model_name, const std::string& base_name);
     
 private:
     std::string host_;

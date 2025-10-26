@@ -9,6 +9,7 @@
 #include <algorithm>
 #include "http_client.h"
 #include "config_loader.h"
+#include "logger.h"
 #include <windows.h>
 
 namespace fs = std::filesystem;
@@ -22,8 +23,10 @@ std::string getParentExePath() {
 
 class MLApplication {
 private:
+    Logger logger_;
     ConfigLoader config_;
     HttpClient http_client_;
+    
     std::thread server_thread_;
     bool server_running_ = false;
     
@@ -61,12 +64,14 @@ private:
     
 public:
     MLApplication()
-    : config_(getExePath() + "\\app_config.ini"),  //full path to config
-      http_client_("localhost", 8000, 5000) {
-        
+    : logger_(false),
+      config_(getExePath() + "\\app_config.ini"),  //full path to config 
+      http_client_("localhost", 8000, 5000, &logger_)
+      
+    {
         std::string exeDir = getExePath();
-        std::cout << "EXE directory: " << exeDir << std::endl;
-        
+        logger_.info("EXE directory: " + exeDir);
+
         if (config_.load()) {
             python_path_ = exeDir + "\\" + config_.getString("paths", "python_path");
             server_script_ = exeDir + "\\" + config_.getString("paths", "server_script");
@@ -74,26 +79,34 @@ public:
             
             learning_base_dir_ = config_.getAppDataPath() + "\\data\\LearningBase";
             
-            std::cout << "Python path: " << python_path_ << std::endl;
-            std::cout << "Server script: " << server_script_ << std::endl;
-            std::cout << "Learning base dir: " << learning_base_dir_ << std::endl;
+            logger_.info("Python path: " + python_path_);
+            logger_.info("Server script: " + server_script_);
+            logger_.info("Learning base dir: " + learning_base_dir_);
 
         } else {
-            std::cerr << "Failed to load config from: " << getExePath() + "\\app_config.ini" << std::endl;
+            logger_.error("Failed to load config from: " + getExePath() + "\\app_config.ini");
         }
     }
 
     void startServer() {
         if (!fs::exists(python_path_) || !fs::exists(server_script_)) {
-            std::cerr << "Python server files not found!" << std::endl;
+            logger_.error("Python server files not found!");
             return;
         }
         
         server_running_ = true;
         server_thread_ = std::thread([this]() {
+            std::string log_path = logger_.getLogFilePath();
+            size_t last_dot = log_path.find_last_of('.');
+            std::string python_log_path = log_path.substr(0, last_dot) + "_PyServer.txt";
+
             std::string command = "cd /d \"" + 
                          fs::path(server_script_).parent_path().string() + 
-                         "\" && \"" + python_path_ + "\" \"" + server_script_ + "\"";
+                         "\" && \"" + python_path_ + "\" \"" + server_script_ + "\""+
+                         ">> \"" + python_log_path + "\" 2>&1";  // ПЕРЕНАПРАВЛЯЕМ ВСЕ В отдельный ЛОГ-файл
+            
+                         logger_.debug("Executing server command: " + command);
+            logger_.info("Python server logs will be saved to: " + python_log_path);
             std::system(command.c_str());
         });
         
@@ -102,8 +115,10 @@ public:
         
         if (waitForServer(10)) {
             std::cout << "✓ Server started successfully!" << std::endl;
+            logger_.info("Python server started successfully on localhost:8000");
         } else {
             std::cerr << "✗ Server failed to start!" << std::endl;
+            logger_.error("Python server failed to start");
             server_running_ = false;
         }
     }
@@ -111,28 +126,35 @@ public:
     bool waitForServer(int max_attempts) {
         for (int i = 0; i < max_attempts; ++i) {
             if (http_client_.healthCheck()) {
+                logger_.info("Server health check passed");
                 return true;
             }
+
             std::cout << "Waiting for server... (" << i+1 << "/" << max_attempts << ")" << std::endl;
+            logger_.debug("Waiting for server... Attempt " + std::to_string(i+1) + "/" + std::to_string(max_attempts));
             std::this_thread::sleep_for(std::chrono::seconds(1));
+
         }
+        logger_.error("Server health check failed after " + std::to_string(max_attempts) + " attempts");
         return false;
     }
     
     void stopServerSoft() {
         server_running_ = false;
+        logger_.info("Attempting graceful server shutdown");
         
         HttpClient temp_client("localhost", 8000, 1000);
         try {
             temp_client.post("/shutdown", "");
+            logger_.info("Graceful shutdown signal sent to server");
         } catch (...) {
-            //
+            logger_.warning("Failed to send graceful shutdown signal");
         }
         
         if (server_thread_.joinable()) {
             server_thread_.join();
         }
-        std::cout << "Server stopped(soft)." << std::endl;
+        logger_.info("Server stopped gracefully");
     }
     void stopServer() {
         server_running_ = false;
@@ -151,7 +173,7 @@ public:
     
     void makePrediction() {
         if (!http_client_.healthCheck()) {
-            std::cerr << "Server is not available!" << std::endl;
+            logger_.error("Server not available for prediction");
             return;
         }
         
@@ -163,6 +185,7 @@ public:
         
         if (!fs::exists(file_path)) {
             std::cerr << "File not found: " << file_path << std::endl;
+            logger_.error("Prediction file not found: " + file_path);
             return;
         }
         
@@ -170,6 +193,7 @@ public:
         auto bases = findLearningBases();
         if (bases.empty()) {
             std::cout << "No trained models found. Please train a model first." << std::endl;
+            logger_.warning("No trained models found for prediction");
             return;
         }
         
@@ -214,15 +238,19 @@ public:
         } else if (model_choice == "3") {
             model_name = "linear_regression";
         } else {
-            std::cout << "Invalid model choice!" << std::endl;
+            // std::cout << "Invalid model choice!" << std::endl;
+            logger_.warning("Invalid model choice: " + model_choice);
             return;
         }
         
         std::cout << "Making prediction..." << std::endl;
+        logger_.info("Starting prediction - File: " + file_path + ", Base: " + selected_base + ", Model: " + model_name);
         
         // Отправляем запрос на сервер
         std::string result = http_client_.predictWithModel(file_path, model_name, selected_base);
-        std::cout << "Results saved to file - " << result << std::endl;
+        std::cout << "Results saved to file!" << std::endl;
+        // result.output_path
+        logger_.info("Prediction server response: " + result);
     }
     
     void saveResultToFile(const std::string& result) {
@@ -381,10 +409,11 @@ public:
         
         if (!parseLearningBaseConfig(config_input, config)) {
             std::cerr << "Invalid configuration format!" << std::endl;
+            logger_.error("Failed to parse learning base config: " + config_input);
             return;
         }
         
-        std::cout << "OK" << std::endl;
+        logger_.info("Learning base config parsed successfully: " + config.name);
         
         std::cout << "Input learning base (path to file):" << std::endl;
         std::cout << "Example: C:/Users/ttemuchin4/Downloads/Telegram Desktop/Landing.txt" << std::endl;
@@ -394,23 +423,22 @@ public:
         std::getline(std::cin, file_path);
         
         if (!fs::exists(file_path)) {
-            std::cerr << "File not found: " << file_path << std::endl;
+            logger_.error("Learning base file not found: " + file_path);
             return;
         }
         
         if (!copyLearningBaseFile(file_path, config.name)) {
-            std::cerr << "Failed to copy learning base file!" << std::endl;
+            logger_.error("Failed to copy learning base file: " + file_path + " to " + config.name);
             return;
         }
         
         if (!saveLearningBaseConfig(config)) {
-            std::cerr << "Failed to save learning base configuration!" << std::endl;
+            logger_.error("Failed to save learning base config for: " + config.name);
             return;
         }
         
         std::cout << "Learning base " << config.name << " saved successfully!" << std::endl;
-        std::cout << "Name: " << config.name << std::endl;
-        
+        logger_.info("Learning base uploaded successfully: " + config.name);
     }
 
     ///////////
@@ -449,6 +477,7 @@ public:
         
         if (!fs::exists(base_path) || !fs::exists(config_path)) {
             std::cout << "Selected base files not found!" << std::endl;
+            logger_.error("Selected learning base files not found: " + selected_base);
             return;
         }
         
@@ -469,7 +498,8 @@ public:
         } else if (model_choice_str == "3") {
             model_name = "linear_regression";
         } else {
-            std::cout << "Invalid model choice!" << std::endl;
+            // std::cout << "Invalid model choice!" << std::endl;
+            logger_.warning("Invalid model choice: " + model_name);
             return;
         }
         
@@ -483,14 +513,18 @@ public:
         }
         
         if (!http_client_.healthCheck()) {
-            std::cout << "Server is not available. Please start the server first." << std::endl;
+            // std::cout << "Server is not available. Please start the server first." << std::endl;
+            logger_.error("Server not available for training");
             return;
         }
         
         std::cout << "Starting learning process..." << std::endl;
+        logger_.info("Starting training - Base: " + selected_base + ", Model: " + model_name);
         
         std::string response = http_client_.trainModel(selected_base, base_path, config_path, model_name);
-        std::cout << "Server response: " << response << std::endl;
+        
+        logger_.info("Training server response: " + response);
+        std::cout << "Operation finished!" << std::endl;
     }
     
     void showMenu() {
@@ -506,13 +540,15 @@ public:
     }
     
     void run() {
-        std::cout << "ML Desktop Application v1.0" << std::endl;
+        logger_.info("ML Desktop Application v1.4 started");
+        std::cout << "ML Desktop Application v1.4" << std::endl;
         
         while (true) {
             showMenu();
             
             std::string choice;
             std::getline(std::cin, choice);
+            logger_.debug("*|* Selected option: " + choice);
             
             if (choice == "1") {
                 startServer();
@@ -525,8 +561,10 @@ public:
             } else if (choice == "5") {
                 if (http_client_.healthCheck()) {
                     std::cout << "✓ Server is healthy!" << std::endl;
+                    logger_.info("Server health check: healthy");
                 } else {
                     std::cout << "✗ Server is not available!" << std::endl;
+                    logger_.warning("Server health check: not available");
                 }
             } else if (choice == "6") {
                 stopServerSoft();
@@ -539,6 +577,7 @@ public:
         
         stopServer();
         std::cout << "Application closed" << std::endl;
+        logger_.info("Application session ended");
     }
 };
 

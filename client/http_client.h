@@ -3,11 +3,12 @@
 
 #include <string>
 #include <map>
-#include <vector> 
+#include <vector>
+#include "logger.h"
 
 class HttpClient {
 public:
-    HttpClient(const std::string& host, int port, int timeout_ms = 5000);
+    HttpClient(const std::string& host, int port, int timeout_ms = 5000, Logger* logger = nullptr);
     ~HttpClient(); //деструктор;)
 
     // Основные методы
@@ -24,6 +25,7 @@ private:
     std::string host_;
     int port_;
     int timeout_ms_;
+    Logger* logger_; 
     
     std::string buildUrl(const std::string& endpoint);
     static size_t writeCallback(void* contents, size_t size, size_t nmemb, std::string* response);

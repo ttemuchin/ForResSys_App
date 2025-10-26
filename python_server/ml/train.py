@@ -80,36 +80,30 @@ def get_best_model_path(base_name, model_name, models_dir):
 def create_model(model_name, input_dims, num_targets):
     """Выбор модели по названию"""
     if model_name == "svr":
-        # TODO: Заменить на вашу SVR модель
+        # TODO svr
         return DynamicNMRRegressor(input_dims, num_targets)
     elif model_name == "convolutional":
         return DynamicNMRRegressor(input_dims, num_targets)
     elif model_name == "linear_regression":
-        # TODO: Заменить на вашу Linear Regression модель
+        # TODO smth else
         return DynamicNMRRegressor(input_dims, num_targets)
     else:
         raise Exception(f"Unknown model type: {model_name}")
 
 def train(base_name, path_to_base, path_to_config, model_name):
-    # Создаем папку для моделей в AppData
     models_dir = Path(os.getenv('APPDATA')) / "ResSysApp" / "models"
     models_dir.mkdir(parents=True, exist_ok=True)
     
-    # Парсим конфиг
     config = parse_config(path_to_config)
     
-    # Парсим данные
     parsed_data = parse_data_file(path_to_base)
     
-    # Проверяем соответствие конфига и данных
     validate_config(config, parsed_data)
     
-    # Разделяем данные
     train_data, test_data = split_data(parsed_data, train_ratio=0.85, shuffle=True, random_seed=42)
     x_train, y_train = splitSamples(train_data)
     x_test, y_test = splitSamples(test_data)
 
-    # Подготовка данных
     batch_size = 32
     train_dataset = DynamicNMRDataset(*x_train, y=y_train)
     train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
@@ -123,14 +117,12 @@ def train(base_name, path_to_base, path_to_config, model_name):
     assert input_dims == [len(x[0]) for x in x_test] and num_targets == len(y_test[0]), "Несоответствие размеров train/test"
     # print(f"Input dimensions: {input_dims}, Number of targets: {num_targets}")
 
-    # Устройство и модель
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     # print("Используемое устройство:", device)
 
     model = create_model(model_name, input_dims, num_targets)
     model.to(device)
 
-    # Обучение
     criterion = nn.MSELoss()
     optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4)
 
@@ -168,7 +160,6 @@ def train(base_name, path_to_base, path_to_config, model_name):
             
             train_running_loss += loss.item()
         
-        # Валидация
         model.eval()
         test_running_loss = 0.0
         all_preds = []
@@ -223,17 +214,13 @@ def train(base_name, path_to_base, path_to_config, model_name):
                 # print(f"Best epoch: {best_epoch + 1} | Best Test Loss: {best_test_loss:.4f} | Best R²: {best_r2:.4f}")
                 break
         
-        # print("-" * 50)
-
     print(f"Best epoch: {best_epoch + 1} | Best Test Loss: {best_test_loss:.4f} | Best R²: {best_r2:.4f}")
 
-    # Загружаем лучшие веса и сохраняем финальную модель
     if best_weights_path.exists():
         model.load_state_dict(torch.load(best_weights_path, weights_only=True))
         # Удаляем временный файл
         best_weights_path.unlink()
 
-    # Сохраняем финальные веса
     torch.save(model.state_dict(), final_weights_path)
     
     return best_test_loss, str(final_weights_path), best_r2

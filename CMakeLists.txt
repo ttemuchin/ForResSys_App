@@ -10,6 +10,7 @@ add_executable(ResSysML
     client/app.cpp
     client/http_client.cpp
     client/config_loader.cpp
+    client/logger.cpp
 )
 
 target_include_directories(ResSysML PRIVATE client)

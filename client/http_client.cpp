@@ -1,11 +1,12 @@
 #include "http_client.h"
+#include "logger.h"
 #include <curl/curl.h>
 #include <iostream>
 #include <sstream>
 #include <json/json.h>
 
-HttpClient::HttpClient(const std::string& host, int port, int timeout_ms)
-    : host_(host), port_(port), timeout_ms_(timeout_ms) {
+HttpClient::HttpClient(const std::string& host, int port, int timeout_ms, Logger* logger)
+    : host_(host), port_(port), timeout_ms_(timeout_ms), logger_(logger) {
     curl_global_init(CURL_GLOBAL_DEFAULT);
 }
 
@@ -35,8 +36,9 @@ std::string HttpClient::get(const std::string& endpoint) {
         curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, timeout_ms_);
         
         CURLcode res = curl_easy_perform(curl);
-        if (res != CURLE_OK) {
-            std::cerr << "HTTP GET failed: " << curl_easy_strerror(res) << std::endl;
+        if (res != CURLE_OK && logger_) {
+            std::string error_msg = "HTTP GET failed: " + std::string(curl_easy_strerror(res));
+            logger_->error(error_msg);
         }
         
         curl_easy_cleanup(curl);
@@ -66,7 +68,8 @@ std::string HttpClient::post(const std::string& endpoint, const std::string& jso
         
         CURLcode res = curl_easy_perform(curl);
         if (res != CURLE_OK) {
-            std::cerr << "HTTP POST failed: " << curl_easy_strerror(res) << std::endl;
+            std::string error_msg = "HTTP POST failed: " + std::string(curl_easy_strerror(res));
+            logger_->error(error_msg);
         }
         
         curl_slist_free_all(headers);

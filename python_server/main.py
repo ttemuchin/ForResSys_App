@@ -21,6 +21,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("PY_Server")
 
 # Модели Pydantic для валидации
+# ???
 class PredictionRequest(BaseModel):
     input_data: str = Field(..., description="Входные данные для обработки")
     parameters: Optional[Dict[str, Any]] = Field(
@@ -83,7 +84,6 @@ async def train_model(request: dict):
         config_path = request.get("config_path")
         model_type = request.get("model_type")
         
-        # Запускаем обучение и получаем результаты
         best_loss, weights_path, accuracy = TRAIN.train(base_name, base_path, config_path, model_type)
         
         return {
@@ -97,26 +97,6 @@ async def train_model(request: dict):
         
     except Exception as e:
         return {"status": "error", "message": str(e)}
-    
-# @app.post("/predict")
-# async def predict_with_model(request: dict):
-#     try:
-#         file_path = request.get("file_path")
-#         model_name = request.get("model_name")
-#         base_name = request.get("base_name")
-#         PRED.pred(file_path, model_name, base_name)
-            
-#         # Создаем папку для результатов
-#         output_dir = Path(os.getenv('APPDATA')) / "ResSysApp" / "data" / "Output"
-#         output_dir.mkdir(parents=True, exist_ok=True)
-        
-#         # Генерируем имя файла для результата
-               
-#         # сохранения результатов
-               
-#     except Exception as e:
-#         return f"Error: {str(e)}"
-# import ml.pred as PRED
 
 @app.post("/predict")
 async def predict_with_model(request: dict):
@@ -128,7 +108,6 @@ async def predict_with_model(request: dict):
         if not file_path or not model_name or not base_name:
             return {"status": "error", "message": "Missing required parameters"}
         
-        # Запускаем предсказание
         output_path, metrics = PRED.pred(file_path, model_name, base_name)
         
         return {
@@ -167,5 +146,6 @@ if __name__ == "__main__":
         host=HOST,
         port=PORT,
         log_level="info" if not DEBUG else "debug",
-        reload=DEBUG
+        access_log=False
+        # reload=DEBUG 
     )

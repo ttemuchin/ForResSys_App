@@ -17,9 +17,6 @@ namespace fs = std::filesystem;
 std::string getExePath() {
     return std::filesystem::current_path().string();
 }
-std::string getParentExePath() {
-    return std::filesystem::current_path().parent_path().string();
-}
 
 class MLApplication {
 private:
@@ -34,6 +31,13 @@ private:
     std::string server_script_;
     std::string output_file_;
     std::string learning_base_dir_;
+
+    struct JobConfig {
+        std::string base_config;// "BaseName 100 2 0.001 0.005 2 400 60"
+        std::string training_file_path;
+        std::string model_name;
+        std::string prediction_file_path;
+    };
 
     std::vector<std::string> findLearningBases() {
         std::vector<std::string> bases;
@@ -61,12 +65,52 @@ private:
         return learning_base_dir_ + "\\Configs\\" + base_name + ".txt";
     }
 
+    bool parseJobConfig(const std::string& config_file_path, JobConfig& job_config) {
+        try {
+            std::ifstream file(config_file_path);
+            if (!file.is_open()) {
+                logger_.error("Cannot open config file: " + config_file_path);
+                return false;
+            }
+            
+            std::vector<std::string> lines;
+            std::string line;
+            while (std::getline(file, line)) {
+                if (!line.empty() && line[0] != '#') {
+                    lines.push_back(line);
+                }
+            }
+            file.close();
+            
+            if (lines.size() < 4) {
+                logger_.error("Config file must contain exactly 4 lines");
+                return false;
+            }
+            
+            job_config.base_config = lines[0];
+            job_config.training_file_path = lines[1];
+            job_config.model_name = lines[2];
+            job_config.prediction_file_path = lines[3];
+            
+            logger_.info("Job config parsed successfully");
+            logger_.info("Base config: " + job_config.base_config);
+            logger_.info("Training file: " + job_config.training_file_path);
+            logger_.info("Model: " + job_config.model_name);
+            logger_.info("Prediction file: " + job_config.prediction_file_path);
+            
+            return true;
+            
+        } catch (const std::exception& e) {
+            logger_.error("Error parsing job config: " + std::string(e.what()));
+            return false;
+        }
+    }
     
 public:
     MLApplication()
     : logger_(false),
       config_(getExePath() + "\\app_config.ini"),  //full path to config 
-      http_client_("localhost", 8000, 5000, &logger_)
+      http_client_("localhost", 8000, 300000, &logger_)
       
     {
         std::string exeDir = getExePath();
@@ -171,86 +215,40 @@ public:
         std::cout << "Server stopped" << std::endl;
     }
     
-    void makePrediction() {
+    bool makePrediction(const std::string& prediction_file_path, const std::string& model_name, const std::string& base_name) {
         if (!http_client_.healthCheck()) {
             logger_.error("Server not available for prediction");
-            return;
+            return false;
         }
         
-        // Запрашиваем путь к файлу
-        std::cout << "Enter path to your data(.txt):" << std::endl;
-        std::cout << "> ";
-        std::string file_path;
-        std::getline(std::cin, file_path);
-        
-        if (!fs::exists(file_path)) {
-            std::cerr << "File not found: " << file_path << std::endl;
-            logger_.error("Prediction file not found: " + file_path);
-            return;
-        }
-        
-        // Выбор обучающей базы
-        auto bases = findLearningBases();
-        if (bases.empty()) {
-            std::cout << "No trained models found. Please train a model first." << std::endl;
-            logger_.warning("No trained models found for prediction");
-            return;
-        }
-        
-        std::cout << "Choose the training base:" << std::endl;
-        for (size_t i = 0; i < bases.size(); ++i) {
-            std::cout << (i + 1) << ". " << bases[i] << std::endl;
-        }
-        
-        std::cout << "Enter number: ";
-        std::string base_choice_str;
-        std::getline(std::cin, base_choice_str);
-        
-        int base_choice;
-        try {
-            base_choice = std::stoi(base_choice_str);
-            if (base_choice < 1 || base_choice > static_cast<int>(bases.size())) {
-                std::cout << "Invalid choice!" << std::endl;
-                return;
-            }
-        } catch (...) {
-            std::cout << "Invalid number!" << std::endl;
-            return;
-        }
-        
-        std::string selected_base = bases[base_choice - 1];
-        
-        // Выбор модели
-        std::cout << "Choose model:" << std::endl;
-        std::cout << "1. SVR" << std::endl;
-        std::cout << "2. Convolutional Layers" << std::endl;
-        std::cout << "3. Linear Regression" << std::endl;
-        std::cout << "Enter number: ";
-        
-        std::string model_choice;
-        std::getline(std::cin, model_choice);
-        
-        std::string model_name;
-        if (model_choice == "1") {
-            model_name = "svr";
-        } else if (model_choice == "2") {
-            model_name = "convolutional";
-        } else if (model_choice == "3") {
-            model_name = "linear_regression";
-        } else {
-            // std::cout << "Invalid model choice!" << std::endl;
-            logger_.warning("Invalid model choice: " + model_choice);
-            return;
+        if (!fs::exists(prediction_file_path)) {
+            logger_.error("Prediction file not found: " + prediction_file_path);
+            return false;
         }
         
         std::cout << "Making prediction..." << std::endl;
-        logger_.info("Starting prediction - File: " + file_path + ", Base: " + selected_base + ", Model: " + model_name);
+        logger_.info("Starting prediction - File: " + prediction_file_path + ", Base: " + base_name + ", Model: " + model_name);
         
-        // Отправляем запрос на сервер
-        std::string result = http_client_.predictWithModel(file_path, model_name, selected_base);
-        std::cout << "Results saved to file!" << std::endl;
-        // result.output_path
+        std::string result = http_client_.predictWithModel(prediction_file_path, model_name, base_name);
         logger_.info("Prediction server response: " + result);
+        
+        // Проверяем успешность предсказания по ответу сервера
+        if (result.find("\"status\":\"success\"") != std::string::npos) {
+            // Извлекаем путь к результату из JSON ответа
+            size_t path_start = result.find("\"output_path\":\"");
+            if (path_start != std::string::npos) {
+                path_start += 25; // Длина "\"output_path\":\""
+                size_t path_end = result.find("\"", path_start);
+                if (path_end != std::string::npos) {
+                    std::string output_path = result.substr(path_start, path_end - path_start);
+                    std::cout << "✓ Results saved to: " << output_path << std::endl;
+                }
+            }
+            return true;
+        } else {
+            std::cout << "✗ Prediction failed!" << std::endl;
+            return false;
+        }
     }
     
     void saveResultToFile(const std::string& result) {
@@ -396,186 +394,147 @@ public:
         }
     }
 
-    void uploadLearningBase() {
+    bool uploadLearningBase(const std::string& base_config, const std::string& training_file_path) {
         LearningBaseConfig config;
         
-        std::cout << "Input config of the learning base:" << std::endl;
-        std::cout << "Format: name num_samples num_targets_y y_precision1 y_precision2 ... num_features_x x_length1 x_length2 ..." << std::endl;
-        std::cout << "Example: Base123 1000 2 0.01 0.05 3 256 128 64" << std::endl;
-        std::cout << "> ";
-        
-        std::string config_input;
-        std::getline(std::cin, config_input);
-        
-        if (!parseLearningBaseConfig(config_input, config)) {
-            std::cerr << "Invalid configuration format!" << std::endl;
-            logger_.error("Failed to parse learning base config: " + config_input);
-            return;
+        if (!parseLearningBaseConfig(base_config, config)) {
+            logger_.error("Failed to parse learning base config: " + base_config);
+            return false;
         }
         
         logger_.info("Learning base config parsed successfully: " + config.name);
         
-        std::cout << "Input learning base (path to file):" << std::endl;
-        std::cout << "Example: C:/Users/ttemuchin4/Downloads/Telegram Desktop/Landing.txt" << std::endl;
-        std::cout << "> ";
-        
-        std::string file_path;
-        std::getline(std::cin, file_path);
-        
-        if (!fs::exists(file_path)) {
-            logger_.error("Learning base file not found: " + file_path);
-            return;
+        if (!fs::exists(training_file_path)) {
+            logger_.error("Learning base file not found: " + training_file_path);
+            return false;
         }
         
-        if (!copyLearningBaseFile(file_path, config.name)) {
-            logger_.error("Failed to copy learning base file: " + file_path + " to " + config.name);
-            return;
+        if (!copyLearningBaseFile(training_file_path, config.name)) {
+            logger_.error("Failed to copy learning base file: " + training_file_path + " to " + config.name);
+            return false;
         }
         
         if (!saveLearningBaseConfig(config)) {
             logger_.error("Failed to save learning base config for: " + config.name);
-            return;
+            return false;
         }
         
-        std::cout << "Learning base " << config.name << " saved successfully!" << std::endl;
+        std::cout << "✓ Learning base " << config.name << " uploaded successfully!" << std::endl;
         logger_.info("Learning base uploaded successfully: " + config.name);
+        return true;
     }
 
     ///////////
-    void startLearning() {
-        auto bases = findLearningBases();
-        
-        if (bases.empty()) {
-            std::cout << "No learning bases found. Please upload a base first." << std::endl;
-            return;
-        }
-        
-        std::cout << "Choose the learning base:" << std::endl;
-        for (size_t i = 0; i < bases.size(); ++i) {
-            std::cout << (i + 1) << ". " << bases[i] << std::endl;
-        }
-        
-        std::cout << "Enter number: ";
-        std::string choice_str;
-        std::getline(std::cin, choice_str);
-        
-        int base_choice;
-        try {
-            base_choice = std::stoi(choice_str);
-            if (base_choice < 1 || base_choice > static_cast<int>(bases.size())) {
-                std::cout << "Invalid choice!" << std::endl;
-                return;
-            }
-        } catch (...) {
-            std::cout << "Invalid number!" << std::endl;
-            return;
-        }
-        
-        std::string selected_base = bases[base_choice - 1];
-        std::string base_path = getLearningBasePath(selected_base);
-        std::string config_path = getLearningBaseConfigPath(selected_base);
+    bool startLearning(const std::string& base_name, const std::string& model_name) {
+        std::string base_path = getLearningBasePath(base_name);
+        std::string config_path = getLearningBaseConfigPath(base_name);
         
         if (!fs::exists(base_path) || !fs::exists(config_path)) {
-            std::cout << "Selected base files not found!" << std::endl;
-            logger_.error("Selected learning base files not found: " + selected_base);
-            return;
-        }
-        
-        std::cout << "Choose model:" << std::endl;
-        std::cout << "1. SVR" << std::endl;
-        std::cout << "2. Convolutional Layers" << std::endl;
-        std::cout << "3. Linear Regression" << std::endl;
-        std::cout << "Enter number: ";
-        
-        std::string model_choice_str;
-        std::getline(std::cin, model_choice_str);
-        
-        std::string model_name;
-        if (model_choice_str == "1") {
-            model_name = "svr";
-        } else if (model_choice_str == "2") {
-            model_name = "convolutional";
-        } else if (model_choice_str == "3") {
-            model_name = "linear_regression";
-        } else {
-            // std::cout << "Invalid model choice!" << std::endl;
-            logger_.warning("Invalid model choice: " + model_name);
-            return;
-        }
-        
-        std::cout << "Start Learning? y/n: ";
-        std::string confirm;
-        std::getline(std::cin, confirm);
-        
-        if (confirm != "y" && confirm != "Y") {
-            std::cout << "Learning cancelled." << std::endl;
-            return;
+            logger_.error("Selected learning base files not found: " + base_name);
+            return false;
         }
         
         if (!http_client_.healthCheck()) {
-            // std::cout << "Server is not available. Please start the server first." << std::endl;
             logger_.error("Server not available for training");
-            return;
+            return false;
         }
         
         std::cout << "Starting learning process..." << std::endl;
-        logger_.info("Starting training - Base: " + selected_base + ", Model: " + model_name);
+        logger_.info("Starting training - Base: " + base_name + ", Model: " + model_name);
         
-        std::string response = http_client_.trainModel(selected_base, base_path, config_path, model_name);
-        
+        std::string response = http_client_.trainModel(base_name, base_path, config_path, model_name);
         logger_.info("Training server response: " + response);
-        std::cout << "Operation finished!" << std::endl;
+        
+        // Проверяем успешность обучения по ответу сервера
+        if (response.find("\"status\":\"success\"") != std::string::npos) {
+            std::cout << "✓ Training completed successfully!" << std::endl;
+            return true;
+        } else {
+            std::cout << "✗ Training failed!" << std::endl;
+            return false;
+        }
     }
-    
-    void showMenu() {
-        std::cout << "\n=== ML Application ===" << std::endl;
-        std::cout << "1. Start server" << std::endl;
-        std::cout << "2. Upload learning base" << std::endl;
-        std::cout << "3. Start learning" << std::endl;
-        std::cout << "4. Make prediction" << std::endl;
-        std::cout << "5. Check server health" << std::endl;
-        std::cout << "6. Stop server" << std::endl;
-        std::cout << "7. Exit" << std::endl;
-        std::cout << "Choose option: ";
+
+    bool executeJob(const std::string& config_file_path) {
+        JobConfig job_config;
+        
+        if (!parseJobConfig(config_file_path, job_config)) {
+            return false;
+        }
+        
+        LearningBaseConfig base_config_obj;
+        if (!parseLearningBaseConfig(job_config.base_config, base_config_obj)) {
+            return false;
+        }
+        
+        std::cout << "\n=== Starting ML Pipeline ===" << std::endl;
+        std::cout << "Base: " << base_config_obj.name << std::endl;
+        std::cout << "Model: " << job_config.model_name << std::endl;
+        std::cout << "Training file: " << job_config.training_file_path << std::endl;
+        std::cout << "Prediction file: " << job_config.prediction_file_path << std::endl;
+        
+        // 1. Загружаем обучающую базу
+        std::cout << "\n1. Uploading learning base..." << std::endl;
+        if (!uploadLearningBase(job_config.base_config, job_config.training_file_path)) {
+            return false;
+        }
+        
+        // 2. Обучаем модель
+        std::cout << "\n2. Training model..." << std::endl;
+        if (!startLearning(base_config_obj.name, job_config.model_name)) {
+            return false;
+        }
+        
+        // 3. Делаем предсказание
+        std::cout << "\n3. Making prediction..." << std::endl;
+        if (!makePrediction(job_config.prediction_file_path, job_config.model_name, base_config_obj.name)) {
+            return false;
+        }
+        
+        std::cout << "\n✓ Pipeline completed successfully!" << std::endl;
+        return true;
     }
     
     void run() {
-        logger_.info("ML Desktop Application v1.4 started");
-        std::cout << "ML Desktop Application v1.4" << std::endl;
+        logger_.info("ML Desktop Application v2.1 started");
+        std::cout << "ML Desktop Application v2.1" << std::endl;
+        
+        startServer();
         
         while (true) {
-            showMenu();
+            std::cout << "\nEnter path to job config file (or 'exit' to quit):" << std::endl;
+            std::cout << "> ";
             
-            std::string choice;
-            std::getline(std::cin, choice);
-            logger_.debug("*|* Selected option: " + choice);
+            std::string input;
+            std::getline(std::cin, input);
             
-            if (choice == "1") {
-                startServer();
-            } else if (choice == "2") {
-                uploadLearningBase();
-            } else if (choice == "3") {
-                startLearning();
-            } else if (choice == "4") {
-                makePrediction();
-            } else if (choice == "5") {
-                if (http_client_.healthCheck()) {
-                    std::cout << "✓ Server is healthy!" << std::endl;
-                    logger_.info("Server health check: healthy");
-                } else {
-                    std::cout << "✗ Server is not available!" << std::endl;
-                    logger_.warning("Server health check: not available");
-                }
-            } else if (choice == "6") {
-                stopServerSoft();
-            } else if (choice == "7") {
+            if (input == "exit" || input == "quit") {
                 break;
+            }
+            
+            if (!fs::exists(input)) {
+                std::cout << "✗ Config file not found: " << input << std::endl;
+                continue;
+            }
+            
+            bool success = executeJob(input);
+            
+            if (success) {
+                std::cout << "\n✓ Job completed successfully!" << std::endl;
             } else {
-                std::cout << "Invalid option!" << std::endl;
+                std::cout << "\n✗ Job failed! Check logs for details." << std::endl;
+            }
+            
+            std::cout << "\nNew predict? (y/n): ";
+            std::string answer;
+            std::getline(std::cin, answer);
+            
+            if (answer != "y" && answer != "Y") {
+                break;
             }
         }
         
-        stopServer();
+        stopServerSoft();
         std::cout << "Application closed" << std::endl;
         logger_.info("Application session ended");
     }

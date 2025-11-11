@@ -214,7 +214,7 @@ def train(base_name, path_to_base, path_to_config, model_name):
                 # print(f"Best epoch: {best_epoch + 1} | Best Test Loss: {best_test_loss:.4f} | Best R²: {best_r2:.4f}")
                 break
         
-    print(f"Best epoch: {best_epoch + 1} | Best Test Loss: {best_test_loss:.4f} | Best R²: {best_r2:.4f}")
+    print(f"Best epoch: {best_epoch + 1} | Best Test Loss: {best_test_loss:.4f} | Best R2: {best_r2:.4f}")
 
     if best_weights_path.exists():
         model.load_state_dict(torch.load(best_weights_path, weights_only=True))

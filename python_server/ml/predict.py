@@ -16,7 +16,7 @@ from Preprocess import parse_data_file, splitSamples
 def get_weights_path(base_name, model_name):
     """Получаем путь к весам модели по названию базы и модели"""
     models_dir = Path(os.getenv('APPDATA')) / "ResSysApp" / "models"
-    weights_path = models_dir / f"{base_name}_{model_name}_best.pth"
+    weights_path = models_dir / f"{base_name}_{model_name}.pth"
     
     if not weights_path.exists():
         raise Exception(f"Weights file not found: {weights_path}")

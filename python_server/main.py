@@ -7,6 +7,7 @@ from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+import math
 from typing import List, Optional, Dict, Any
 import uvicorn
 import logging
@@ -84,14 +85,16 @@ async def train_model(request: dict):
         config_path = request.get("config_path")
         model_type = request.get("model_type")
         
-        best_loss, weights_path, accuracy = TRAIN.train(base_name, base_path, config_path, model_type)
+        best_loss, weights_path, best_r2 = TRAIN.train(base_name, base_path, config_path, model_type)
         
+        logger.info(f"\nTrain finished \n Best Loss = {best_loss}\nBest R2-score = {best_r2} \n")
+
         return {
             "status": "success",
             "message": f"Training completed for {base_name}",
             "model_type": model_type,
-            "accuracy": accuracy,
-            "best_loss": best_loss,
+            "best_r2": float(best_r2) if math.isfinite(best_r2) else 0.0,
+            "best_loss": float(best_loss) if math.isfinite(best_loss) else 0.0,
             "weights_path": weights_path
         }
         
@@ -109,6 +112,7 @@ async def predict_with_model(request: dict):
             return {"status": "error", "message": "Missing required parameters"}
         
         output_path, metrics = PRED.pred(file_path, model_name, base_name)
+        logger.info(f"\nPredict finished \n Metrics:\n{metrics}\n")
         
         return {
             "status": "success",

@@ -101,6 +101,8 @@ def parse_data_file(file_path):
     try:
         if len(samples) != A:
             print(f"Warning: Expected {A} samples, but found {len(samples)}")
+            
+        validate_data(samples)
     finally:
         return samples
 
@@ -140,3 +142,19 @@ def split_data(parsed_data, train_ratio=0.8, shuffle=True, random_seed=None):
     test_data = data_copy[split_idx:]
     
     return train_data, test_data
+
+def validate_data(data):
+    """Проверка данных на корректность"""
+    import numpy as np
+    
+    for sample in data:
+        if 'Yi' in sample:
+            for val in sample['Yi']:
+                if not np.isfinite(val):
+                    raise ValueError(f"Non-finite value found in Yi: {val}")
+        
+        for key in sample:
+            if key.startswith("X["):
+                for val in sample[key]:
+                    if not np.isfinite(val):
+                        raise ValueError(f"Non-finite value found in {key}: {val}")

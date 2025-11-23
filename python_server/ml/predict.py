@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 import numpy as np
+import math
 import sys, os
 from pathlib import Path
 from sklearn.metrics import r2_score, mean_squared_error
@@ -86,6 +87,21 @@ def save_predictions(all_preds, all_targets, file_path, model_name, base_name, m
     
     return str(output_path)
 
+def safe_r2_score(y_true, y_pred):
+    """Безопасное вычисление R2-score"""
+    try:
+        if (np.any(~np.isfinite(y_true)) or 
+            np.any(~np.isfinite(y_pred)) or 
+            len(y_true) < 2 or 
+            np.var(y_true) == 0):
+            return 0.0
+        
+        r2 = r2_score(y_true, y_pred)
+        return r2 if np.isfinite(r2) else 0.0
+        
+    except:
+        return 0.0
+
 def pred(file_path, model_name, base_name):
     """Основная функция предсказания"""
     weights_path = get_weights_path(base_name, model_name)
@@ -144,11 +160,11 @@ def pred(file_path, model_name, base_name):
     
     # метрики
     mse = mean_squared_error(all_targets, all_preds)
-    r2 = r2_score(all_targets, all_preds)
+    r2 = safe_r2_score(all_targets, all_preds)
     
     metrics = {
-        'mse': mse,
-        'r2': r2,
+        'mse': float(mse) if math.isfinite(mse) else 0.0,
+        'r2': float(r2) if math.isfinite(r2) else 0.0,
         'test_loss': test_loss
     }
     

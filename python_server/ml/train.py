@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 import numpy as np
+import math
 import os, sys
 from pathlib import Path
 from sklearn.metrics import r2_score
@@ -12,6 +13,33 @@ from ConvLayers_model import DynamicNMRRegressor
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'preproc')))
 from Preprocess import parse_data_file, splitSamples, split_data
+
+def safe_float_conversion(obj):
+    """Безопасное преобразование float значений для JSON"""
+    if isinstance(obj, float):
+        if math.isinf(obj) or math.isnan(obj):
+            return 0.0  # или None, или строковое представление
+        return obj
+    elif isinstance(obj, dict):
+        return {k: safe_float_conversion(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [safe_float_conversion(item) for item in obj]
+    return obj
+
+def safe_r2_score(y_true, y_pred):
+    """Безопасное вычисление R2-score"""
+    try:
+        if (np.any(~np.isfinite(y_true)) or 
+            np.any(~np.isfinite(y_pred)) or 
+            len(y_true) < 2 or 
+            np.var(y_true) == 0):
+            return 0.0
+        
+        r2 = r2_score(y_true, y_pred)
+        return r2 if np.isfinite(r2) else 0.0
+        
+    except:
+        return 0.0
 
 def parse_config(config_path):
     """Парсинг конфигурационного файла"""
@@ -183,7 +211,9 @@ def train(base_name, path_to_base, path_to_config, model_name):
 
         train_loss = train_running_loss / len(train_dataloader)
         test_loss = test_running_loss / len(test_dataloader)
-        r2 = r2_score(all_targets, all_preds)
+
+
+        r2 = safe_r2_score(all_targets, all_preds)
 
         history['train_loss'].append(train_loss)
         history['test_loss'].append(test_loss)
@@ -215,6 +245,9 @@ def train(base_name, path_to_base, path_to_config, model_name):
                 break
         
     print(f"Best epoch: {best_epoch + 1} | Best Test Loss: {best_test_loss:.4f} | Best R2: {best_r2:.4f}")
+    
+    best_test_loss = best_test_loss if math.isfinite(best_test_loss) else 0.0
+    best_r2 = best_r2 if math.isfinite(best_r2) else 0.0
 
     if best_weights_path.exists():
         model.load_state_dict(torch.load(best_weights_path, weights_only=True))

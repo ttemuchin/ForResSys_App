@@ -1,7 +1,7 @@
 import torch.nn as nn
 import torch
 
-class DynamicNMRRegressor(nn.Module):
+class DynamicNMR_ConvRegressor(nn.Module):
     def __init__(self, input_dims: list, num_targets: int, conv_filters: int = 32):
         """
         :param input_dims: Список длин сигналов (например, [1000, 2000])

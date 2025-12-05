@@ -9,7 +9,8 @@ from sklearn.metrics import r2_score, mean_squared_error
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'models')))
 from Dataset import DynamicNMRDataset
-from ConvLayers_model import DynamicNMRRegressor
+from ConvLayers_model import DynamicNMR_ConvRegressor
+from LinearRegression_model import DynamicNMR_LinearRegression
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'preproc')))
 from Preprocess import parse_data_file, splitSamples
@@ -48,13 +49,12 @@ def parse_config(config_path):
 def create_model(model_name, input_dims, num_targets):
     """Создаем модель по названию"""
     if model_name == "svr":
-        # TODO: Заменить на вашу SVR модель
-        return DynamicNMRRegressor(input_dims, num_targets)
+        # TODO: Заменить на SVR модель
+        return DynamicNMR_ConvRegressor(input_dims, num_targets)
     elif model_name == "convolutional":
-        return DynamicNMRRegressor(input_dims, num_targets)
+        return DynamicNMR_ConvRegressor(input_dims, num_targets)
     elif model_name == "linear_regression":
-        # TODO: Заменить на вашу Linear Regression модель
-        return DynamicNMRRegressor(input_dims, num_targets)
+        return DynamicNMR_LinearRegression(input_dims, num_targets)
     else:
         raise Exception(f"Unknown model type: {model_name}")
 
@@ -77,13 +77,28 @@ def save_predictions(all_preds, all_targets, file_path, model_name, base_name, m
         f.write(f"Loss: {metrics['test_loss']:.6f}\n")
         f.write(f"R2 Score: {metrics['r2']:.6f}\n")
         f.write("\nPREDICTIONS:\n")
-        f.write("Sample\t" + "\t".join([f"Target_{i}" for i in range(len(all_targets[0]))]) + 
-                "\t" + "\t".join([f"Pred_{i}" for i in range(len(all_preds[0])+1)]) + "\n")
         
+        col_width = 12
+        
+        # Заголовки
+        headers = ["Sample"]
+        headers.extend([f"Target_{i}" for i in range(len(all_targets[0]))])
+        headers.extend([f"Pred_{i}" for i in range(len(all_preds[0]))])
+        
+        header_line = "".join([h.ljust(col_width) for h in headers])
+        f.write(header_line + "\n")
+        
+        # Данные
         for i in range(len(all_preds)):
-            f.write(f"{i+1}\t")
-            f.write("\t".join([f"{val:.6f}" for val in all_targets[i]]) + "\t")
-            f.write("\t".join([f"{val:.6f}" for val in all_preds[i]]) + "\n")
+            row = [str(i+1)]
+            row.extend([f"{val:.6f}" for val in all_targets[i]])
+            row.extend([f"{val:.6f}" for val in all_preds[i]])
+            
+            formatted_row = []
+            for item in row:
+                formatted_row.append(item.ljust(col_width))
+
+            f.write("".join(formatted_row) + "\n")
     
     return str(output_path)
 

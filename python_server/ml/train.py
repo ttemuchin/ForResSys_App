@@ -9,7 +9,8 @@ from sklearn.metrics import r2_score
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'models')))
 from Dataset import DynamicNMRDataset
-from ConvLayers_model import DynamicNMRRegressor
+from ConvLayers_model import DynamicNMR_ConvRegressor
+from LinearRegression_model import DynamicNMR_LinearRegression
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'preproc')))
 from Preprocess import parse_data_file, splitSamples, split_data
@@ -109,12 +110,11 @@ def create_model(model_name, input_dims, num_targets):
     """Выбор модели по названию"""
     if model_name == "svr":
         # TODO svr
-        return DynamicNMRRegressor(input_dims, num_targets)
+        return DynamicNMR_ConvRegressor(input_dims, num_targets)
     elif model_name == "convolutional":
-        return DynamicNMRRegressor(input_dims, num_targets)
+        return DynamicNMR_ConvRegressor(input_dims, num_targets)
     elif model_name == "linear_regression":
-        # TODO smth else
-        return DynamicNMRRegressor(input_dims, num_targets)
+        return DynamicNMR_LinearRegression(input_dims, num_targets)
     else:
         raise Exception(f"Unknown model type: {model_name}")
 

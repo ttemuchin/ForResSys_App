@@ -15,7 +15,7 @@ private:
     bool console_output;
     
     std::string getCurrentTimestamp();
-    std::string getSessionFilename();
+    std::string getSessionFilename(const std::string& log_dir);
 
 public:
     Logger(bool enable_console = false);

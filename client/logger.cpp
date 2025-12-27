@@ -12,26 +12,19 @@
 #include <iomanip>
 
 Logger::Logger(bool enable_console) : console_output(enable_console) {
-    char app_data_path[MAX_PATH];
-    std::string log_dir;
+    char exe_path[MAX_PATH];
+    GetModuleFileNameA(NULL, exe_path, MAX_PATH);
+    std::string exe_dir = std::filesystem::path(exe_path).parent_path().string();
     
-    if (SUCCEEDED(SHGetFolderPathA(NULL, CSIDL_APPDATA, NULL, 0, app_data_path))) {
-        log_dir = std::string(app_data_path) + "\\ResSysApp\\logs";
-    } else {
-        log_dir = "logs"; // Fallback
-    }
-    
+    std::string log_dir = exe_dir + "\\logs";
     std::filesystem::create_directories(log_dir);
     
-    log_file_path = getSessionFilename();
+    log_file_path = getSessionFilename(log_dir);
     log_file.open(log_file_path, std::ios::app);
     
     if (log_file.is_open()) {
         std::string startup_msg = "=== Application Session Started ===";
         log_file << getCurrentTimestamp() << " " << startup_msg << "\n";
-        // if (console_output) {
-        //     std::cout << startup_msg << std::endl;
-        // }
     }
 }
 
@@ -58,26 +51,17 @@ std::string Logger::getCurrentTimestamp() {
     return ss.str();
 }
 
-std::string Logger::getSessionFilename() {
-    char app_data_path[MAX_PATH];
-    std::string log_dir;
-    
-    if (SUCCEEDED(SHGetFolderPathA(NULL, CSIDL_APPDATA, NULL, 0, app_data_path))) {
-        log_dir = std::string(app_data_path) + "\\ResSysApp\\logs";
-    } else {
-        log_dir = "logs";
-    }
+std::string Logger::getSessionFilename(const std::string& log_dir) {
     
     auto now = std::chrono::system_clock::now();
     auto time_t = std::chrono::system_clock::to_time_t(now);
     
     std::tm tm;
     localtime_s(&tm, &time_t);
-
+    
     std::stringstream ss;
     ss << std::put_time(&tm, "%Y-%m-%d");
     
-    // Определяем номер сессии за сегодня
     std::string date_prefix = ss.str();
     int session_number = 1;
     
@@ -134,7 +118,6 @@ void Logger::debug(const std::string& message) {
         log_file << getCurrentTimestamp() << " " << log_entry << "\n";
         log_file.flush();
     }
-    // Debug сообщения не выводятся в консоль по умолчанию
 }
 
 std::string Logger::getLogFilePath() const {

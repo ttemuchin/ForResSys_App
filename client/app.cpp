@@ -27,6 +27,7 @@ private:
     std::thread server_thread_;
     bool server_running_ = false;
     
+    std::string app_base_dir_;
     std::string python_path_;
     std::string server_script_;
     std::string output_file_;
@@ -113,15 +114,14 @@ public:
       http_client_("localhost", 8000, 300000, &logger_)
       
     {
-        std::string exeDir = getExePath();
-        logger_.info("EXE directory: " + exeDir);
+        app_base_dir_ = getExePath();
+        logger_.info("EXE directory: " + app_base_dir_);
 
         if (config_.load()) {
-            python_path_ = exeDir + "\\" + config_.getString("paths", "python_path");
-            server_script_ = exeDir + "\\" + config_.getString("paths", "server_script");
-            output_file_ = exeDir + "\\" + config_.getString("paths", "output_file");
-            
-            learning_base_dir_ = config_.getAppDataPath() + "\\data\\LearningBase";
+            python_path_ = app_base_dir_ + "\\" + config_.getString("paths", "python_path");
+            server_script_ = app_base_dir_ + "\\" + config_.getString("paths", "server_script");
+            output_file_ = app_base_dir_ + "\\" + config_.getString("paths", "output_file");
+            learning_base_dir_ = app_base_dir_+ "\\data\\LearningBase";
             
             logger_.info("Python path: " + python_path_);
             logger_.info("Server script: " + server_script_);

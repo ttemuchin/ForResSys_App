@@ -119,8 +119,8 @@ def create_model(model_name, input_dims, num_targets):
         raise Exception(f"Unknown model type: {model_name}")
 
 def train(base_name, path_to_base, path_to_config, model_name):
-    models_dir = Path(os.getenv('APPDATA')) / "ResSysApp" / "models"
-    models_dir.mkdir(parents=True, exist_ok=True)
+    models_dir = Path(os.path.dirname(__file__)).parent.parent / "models" # \\app\\build\\models\\
+    models_dir.mkdir(exist_ok=True)
     
     config = parse_config(path_to_config)
     

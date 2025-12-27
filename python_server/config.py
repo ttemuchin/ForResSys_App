@@ -1,26 +1,24 @@
 import os
 from pathlib import Path
 
-# dev / prod
-def is_dev_mode():
-    parent_dir = Path(__file__).parent.parent
-    return (parent_dir / "CMakeLists.txt").exists()
+def get_app_base_dir():
+    """Получаем базовую директорию приложения"""
+    # Если файл конфига существует рядом, используем его расположение
+    config_path = Path(__file__).parent / "app_config.ini"
+    if config_path.exists():
+        return Path(__file__).parent.parent
+    
+    # Иначе используем директорию скрипта
+    return Path(__file__).parent
 
-BASE_DIR = Path(__file__).parent
+BASE_DIR = get_app_base_dir()
+MODELS_DIR = BASE_DIR / "models"
+DATA_DIR = BASE_DIR / "data"
+LOGS_DIR = BASE_DIR / "logs"
+OUTPUT_DIR = BASE_DIR / "output"
 
-if is_dev_mode():
-    MODELS_DIR = BASE_DIR / "models"
-    DATA_DIR = BASE_DIR / "data" 
-    LOGS_DIR = BASE_DIR / "logs"
-else:
-    APP_DATA_DIR = Path(os.getenv('APPDATA')) / "ResSysApp"
-    APP_DATA_DIR.mkdir(exist_ok=True)
-    MODELS_DIR = APP_DATA_DIR / "models"
-    DATA_DIR = APP_DATA_DIR / "data"
-    LOGS_DIR = APP_DATA_DIR / "logs"
-
-for directory in [MODELS_DIR, DATA_DIR, LOGS_DIR]:
-    directory.mkdir(parents=True, exist_ok=True)
+for d in [MODELS_DIR, DATA_DIR, LOGS_DIR, OUTPUT_DIR]:
+    d.mkdir(parents=True, exist_ok=True)
 
 # Настройки сервера
 HOST = "localhost"
@@ -29,8 +27,6 @@ DEBUG = False
 
 # Настройки модели
 MODEL_CONFIG = {
-    "input_size": 100,
-    "output_size": 10,
-    "model_version": "1.0.0",
-    "supported_formats": [".txt", ".csv", ".json"]
+    "model_version": "2.1",
+    "supported_formats": [".txt"] #".csv", ".json"
 }

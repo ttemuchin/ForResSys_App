@@ -16,8 +16,8 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'p
 from Preprocess import parse_data_file, splitSamples
 
 def get_weights_path(base_name, model_name):
-    """Получаем путь к весам модели по названию базы и модели"""
-    models_dir = Path(os.getenv('APPDATA')) / "ResSysApp" / "models"
+    """Путь к весам модели по названию базы и модели"""
+    models_dir = Path(os.path.dirname(__file__)).parent.parent / "models"
     weights_path = models_dir / f"{base_name}_{model_name}.pth"
     
     if not weights_path.exists():
@@ -26,8 +26,8 @@ def get_weights_path(base_name, model_name):
     return weights_path
 
 def get_model_config_path(base_name):
-    """Получаем путь к конфигу базы"""
-    learning_base_dir = Path(os.getenv('APPDATA')) / "ResSysApp" / "data" / "LearningBase"
+    """Путь к конфигу базы"""
+    learning_base_dir = Path(os.path.dirname(__file__)).parent.parent / "data" / "LearningBase"
     config_path = learning_base_dir / "Configs" / f"{base_name}.txt"
     
     if not config_path.exists():
@@ -60,7 +60,8 @@ def create_model(model_name, input_dims, num_targets):
 
 def save_predictions(all_preds, all_targets, file_path, model_name, base_name, metrics):
     """Сохраняем предсказания в файл"""
-    output_dir = Path(os.getenv('APPDATA')) / "ResSysApp" / "data" / "Output"
+    # output_dir = Path(os.getenv('APPDATA')) / "ResSysApp" / "data" / "Output"
+    output_dir = Path(os.path.dirname(__file__)).parent.parent / "output"
     output_dir.mkdir(parents=True, exist_ok=True)
     
     input_filename = Path(file_path).stem

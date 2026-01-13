@@ -95,28 +95,38 @@ bool HttpClient::healthCheck() {
     return false;
 }
 
-std::string HttpClient::trainModel(const std::string& base_name, const std::string& base_path,
-                                  const std::string& config_path, const std::string& model_type) {
-    Json::Value request;
-    request["base_name"] = base_name;
-    request["base_path"] = base_path;
-    request["config_path"] = config_path;
-    request["model_type"] = model_type;
+std::string HttpClient::processJson(const std::string& json_data) {
+    Json::Value wrapper;
+    wrapper["json_data"] = json_data;
     
     Json::StreamWriterBuilder writer;
-    std::string json_request = Json::writeString(writer, request);
+    std::string json_request = Json::writeString(writer, wrapper);
     
-    return post("/train", json_request);
+    return post("/process_json", json_request);
 }
 
-std::string HttpClient::predictWithModel(const std::string& file_path, const std::string& model_name, const std::string& base_name) {
-    Json::Value request;
-    request["file_path"] = file_path;
-    request["model_name"] = model_name;
-    request["base_name"] = base_name;
+// std::string HttpClient::trainModel(const std::string& base_name, const std::string& base_path,
+//                                   const std::string& config_path, const std::string& model_type) {
+//     Json::Value request;
+//     request["base_name"] = base_name;
+//     request["base_path"] = base_path;
+//     request["config_path"] = config_path;
+//     request["model_type"] = model_type;
     
-    Json::StreamWriterBuilder writer;
-    std::string json_request = Json::writeString(writer, request);
+//     Json::StreamWriterBuilder writer;
+//     std::string json_request = Json::writeString(writer, request);
     
-    return post("/predict", json_request);
-}
+//     return post("/train", json_request);
+// }
+
+// std::string HttpClient::predictWithModel(const std::string& file_path, const std::string& model_name, const std::string& base_name) {
+//     Json::Value request;
+//     request["file_path"] = file_path;
+//     request["model_name"] = model_name;
+//     request["base_name"] = base_name;
+    
+//     Json::StreamWriterBuilder writer;
+//     std::string json_request = Json::writeString(writer, request);
+    
+//     return post("/predict", json_request);
+// }

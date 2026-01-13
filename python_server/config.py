@@ -27,6 +27,6 @@ DEBUG = False
 
 # Настройки модели
 MODEL_CONFIG = {
-    "model_version": "2.1",
+    "model_version": "2.2",
     "supported_formats": [".txt"] #".csv", ".json"
 }

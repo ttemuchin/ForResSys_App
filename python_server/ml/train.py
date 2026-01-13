@@ -4,6 +4,7 @@ from torch.utils.data import DataLoader
 import numpy as np
 import math
 import os, sys
+import json
 from pathlib import Path
 from sklearn.metrics import r2_score
 
@@ -43,42 +44,40 @@ def safe_r2_score(y_true, y_pred):
         return 0.0
 
 def parse_config(config_path):
-    """Парсинг конфигурационного файла"""
-    config = {}
+    """Парсинг JSON конфигурационного файла"""
     try:
         with open(config_path, 'r') as f:
-            for line in f:
-                line = line.strip()
-                if line and '=' in line:
-                    key, value = line.split('=', 1)
-                    config[key.strip()] = value.strip()
-        return config
+            config_data = json.load(f)
+        if "baseConfig" in config_data:
+            return config_data["baseConfig"]
+        return config_data
     except Exception as e:
-        raise Exception(f"Error parsing config file: {str(e)}")
+        raise Exception(f"Error parsing JSON config file: {str(e)}")
 
 def validate_config(config, parsed_data):
-    """Проверка соответствия конфига данным"""
-    required_fields = ['name', 'num_samples', 'num_targets_y', 'num_features_x', 'x_lengths']
+    """Проверка соответствия JSON-конфига данным"""
+    # config теперь словарь с полями BaseConfig
+    required_fields = ['name', 'N', 'nY', 'nX', 'dimension']
     for field in required_fields:
         if field not in config:
             raise Exception(f"Missing required field in config: {field}")
     
     # Проверяем количество образцов
-    num_samples = int(config['num_samples'])
+    num_samples = config['N']
     if len(parsed_data) != num_samples:
         raise Exception(f"Sample count mismatch: config has {num_samples}, data has {len(parsed_data)}")
     
     # Проверяем количество целевых переменных
-    num_targets_y = int(config['num_targets_y'])
+    num_targets_y = config['nY']
     if 'Yi' not in parsed_data[0] or len(parsed_data[0]['Yi']) != num_targets_y:
         raise Exception(f"Target variables count mismatch: config has {num_targets_y}, data has {len(parsed_data[0].get('Yi', []))}")
     
     # Проверяем количество признаков и их длины
-    num_features_x = int(config['num_features_x'])
-    x_lengths = list(map(int, config['x_lengths'].split(',')))
+    num_features_x = config['nX']
+    x_lengths = config['dimension']  # уже список int
     
     if len(x_lengths) != num_features_x:
-        raise Exception(f"Features count mismatch: config has {num_features_x}, x_lengths has {len(x_lengths)}")
+        raise Exception(f"Features count mismatch: config has {num_features_x}, dimension has {len(x_lengths)}")
     
     # Проверяем фактические длины признаков в данных
     for i, length in enumerate(x_lengths):
@@ -88,11 +87,11 @@ def validate_config(config, parsed_data):
         if len(parsed_data[0][feature_key]) != length:
             raise Exception(f"Feature {feature_key} length mismatch: config has {length}, data has {len(parsed_data[0][feature_key])}")
     
-    # TODO: Добавить проверку y_precision когда будет с чем сравнивать
-    if 'y_precision' in config:
-        y_precision = list(map(float, config['y_precision'].split(',')))
+    # Проверка accuracy
+    if 'accuracy' in config:
+        y_precision = config['accuracy']  # уже список float
         if len(y_precision) != num_targets_y:
-            raise Exception(f"Y precision count mismatch: config has {len(y_precision)}, targets has {num_targets_y}")
+            raise Exception(f"Y precision count mismatch: accuracy has {len(y_precision)}, targets has {num_targets_y}")
     
     return True
 

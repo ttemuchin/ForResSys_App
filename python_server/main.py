@@ -85,20 +85,19 @@ async def health_check():
 
 #  конфиги баз можно сохранять в json
 def save_base_config(base_config: BaseConfig, config_dir: Path):
-    """Сохранение конфигурации базы в файл"""
-    config_path = config_dir / f"{base_config.name}.txt"
-    with open(config_path, 'w') as f:
-        f.write(f"name={base_config.name}\n")
-        f.write(f"num_samples={base_config.N}\n")
-        f.write(f"num_targets_y={base_config.nY}\n")
-        f.write(f"y_precision={','.join(map(str, base_config.accuracy))}\n")
-        f.write(f"num_features_x={base_config.nX}\n")
-        f.write(f"x_lengths={','.join(map(str, base_config.dimension))}\n")
+    """Сохранение конфигурации базы в JSON файл"""
+    config_path = config_dir / f"{base_config.name}.json"
+    config_data = base_config.dict()
+    
+    with open(config_path, 'w', encoding='utf-8') as f:
+        json.dump(config_data, f, indent=2, ensure_ascii=False)
+    
     return str(config_path)
 
 def upload_learning_base(base_config: BaseConfig, base_path: str):
     try:
         learning_base_dir = DATA_DIR / "LearningBase"
+        # logger.error(f"DATA_DIR: {DATA_DIR}")
         config_dir = learning_base_dir / "Configs"
         learning_base_dir.mkdir(parents=True, exist_ok=True)
         config_dir.mkdir(parents=True, exist_ok=True)

@@ -3,6 +3,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 import numpy as np
 import math
+import json
 import sys, os
 from pathlib import Path
 from sklearn.metrics import r2_score, mean_squared_error
@@ -28,7 +29,7 @@ def get_weights_path(base_name, model_name):
 def get_model_config_path(base_name):
     """Путь к конфигу базы"""
     learning_base_dir = Path(os.path.dirname(__file__)).parent.parent / "data" / "LearningBase"
-    config_path = learning_base_dir / "Configs" / f"{base_name}.txt"
+    config_path = learning_base_dir / "Configs" / f"{base_name}.json"
     
     if not config_path.exists():
         raise Exception(f"Config file not found: {config_path}")
@@ -36,15 +37,10 @@ def get_model_config_path(base_name):
     return config_path
 
 def parse_config(config_path):
-    """Парсим конфигурационный файл"""
-    config = {}
+    """Парсим JSON конфигурационный файл"""
     with open(config_path, 'r') as f:
-        for line in f:
-            line = line.strip()
-            if line and '=' in line:
-                key, value = line.split('=', 1)
-                config[key.strip()] = value.strip()
-    return config
+        config_data = json.load(f)
+    return config_data
 
 def create_model(model_name, input_dims, num_targets):
     """Создаем модель по названию"""
@@ -124,9 +120,9 @@ def pred(file_path, model_name, base_name):
     config_path = get_model_config_path(base_name)
     
     config = parse_config(config_path)
-    num_features_x = int(config['num_features_x'])
-    x_lengths = list(map(int, config['x_lengths'].split(',')))
-    num_targets_y = int(config['num_targets_y'])
+    num_features_x = config['nX']   #int(config['num_features_x'])
+    x_lengths = config['dimension'] #list(map(int, config['x_lengths'].split(',')))
+    num_targets_y = config['nY']    #int(config['num_targets_y'])
     
     test_data = parse_data_file(file_path)
     x_test, y_test = splitSamples(test_data)

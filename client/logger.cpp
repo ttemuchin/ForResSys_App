@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <chrono>
 #include <iomanip>
+#include <regex>
 
 Logger::Logger(bool enable_console) : console_output(enable_console) {
     char exe_path[MAX_PATH];
@@ -63,16 +64,30 @@ std::string Logger::getSessionFilename(const std::string& log_dir) {
     ss << std::put_time(&tm, "%Y-%m-%d");
     
     std::string date_prefix = ss.str();
-    int session_number = 1;
+    int max_session_number = 0;
+    
+    std::regex session_pattern(date_prefix + "-session-(\\d+)\\.txt");
     
     for (const auto& entry : std::filesystem::directory_iterator(log_dir)) {
         if (entry.is_regular_file()) {
             std::string filename = entry.path().filename().string();
-            if (filename.find(date_prefix) != std::string::npos) {
-                session_number++;
+            
+            std::smatch matches;
+            if (std::regex_match(filename, matches, session_pattern)) {
+                // matches[1] содержит номер сессии
+                try {
+                    int session_num = std::stoi(matches[1].str());
+                    if (session_num > max_session_number) {
+                        max_session_number = session_num;
+                    }
+                } catch (...) {
+                    // Игнорируем ошибки преобразования
+                }
             }
         }
     }
+    
+    int session_number = max_session_number + 1;
     
     std::string filename = log_dir + "\\" + date_prefix + "-session-" + 
                           std::to_string(session_number) + ".txt";

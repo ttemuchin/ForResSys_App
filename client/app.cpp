@@ -54,7 +54,7 @@ public:
             logger_.info("Server script: " + server_script_);
             logger_.info("Learning base dir: " + learning_base_dir_);
 
-            createDirectories();
+            // createDirectories(); точно лишнее?
 
         } else {
             logger_.error("Failed to load config from: " + getExePath() + "\\app_config.ini");
@@ -253,7 +253,7 @@ private:
         
         std::cout << "✓ Request processed by server" << std::endl;
         std::cout << "Response: " << response << std::endl;
-        return true;
+        return false;
     }
 
 

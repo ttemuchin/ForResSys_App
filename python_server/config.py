@@ -3,13 +3,14 @@ from pathlib import Path
 
 def get_app_base_dir():
     """Получаем базовую директорию приложения"""
-    # Если файл конфига существует рядом, используем его расположение
-    config_path = Path(__file__).parent / "app_config.ini"
-    if config_path.exists():
-        return Path(__file__).parent.parent
+    # # Если файл конфига существует рядом, используем его расположение
+    # config_path = Path(__file__).parent / "app_config.ini"
+    # if config_path.exists():
+    #     return Path(__file__).parent.parent
     
-    # Иначе используем директорию скрипта
-    return Path(__file__).parent
+    # # Иначе используем директорию скрипта
+    # return Path(__file__).parent
+    return Path(__file__).parent.parent
 
 BASE_DIR = get_app_base_dir()
 MODELS_DIR = BASE_DIR / "models"

@@ -48,7 +48,6 @@ public:
         if (config_.load()) {
             python_path_ = app_base_dir_ + "\\" + config_.getString("paths", "python_path");
             server_script_ = app_base_dir_ + "\\" + config_.getString("paths", "server_script");
-            // output_file_ = app_base_dir_ + "\\" + config_.getString("paths", "output_file");
             learning_base_dir_ = app_base_dir_+ "\\data\\LearningBase";
             
             logger_.info("Python server: " + python_path_);
@@ -73,7 +72,6 @@ private:
         
         for (const auto& dir : dirs) {
             fs::create_directories(dir);
-            // std::cout << dir << std::endl;
         }
     }
 

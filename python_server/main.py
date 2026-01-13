@@ -17,7 +17,6 @@ import logging
 from datetime import datetime
 
 from config import HOST, PORT, DEBUG, MODEL_CONFIG, DATA_DIR, MODELS_DIR, OUTPUT_DIR
-from moked_model import model
 import ml.predict as PRED
 import ml.train as TRAIN
 
@@ -52,11 +51,11 @@ class PredictRequest(BaseModel):
 class ProcessJsonRequest(BaseModel):
     json_data: Dict[str, Any]
 
-class HealthResponse(BaseModel):
-    status: str
-    model_loaded: bool
-    server_time: str
-    model_info: Dict[str, Any]
+# class HealthResponse(BaseModel):
+#     status: str
+#     model_loaded: bool
+#     server_time: str
+#     model_info: Dict[str, Any]
 
 # init FastAPI
 app = FastAPI(
@@ -80,23 +79,11 @@ app.add_middleware(
 async def root():
     return {"message": "ML Model Server is running"}
 
-@app.get("/health", response_model=HealthResponse)
+@app.get("/health") #, response_model=HealthResponse
 async def health_check():
-    """Проверка статуса сервера и модели"""
-    return {
-        "status": "healthy",
-        "model_loaded": model.is_loaded, # MOKED !
-        "server_time": datetime.now().isoformat(),
-        "model_info": model.get_model_info()
-    }
+    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
 
-# @app.get("/model/info")
-# async def get_model_info():
-#     """Получение информации о модели"""
-#     return model.get_model_info()
-
-#  это вспомогательные методы. нужно ли их переносить в другой файл?
-#  конфиги баз можно сохранять в json?
+#  конфиги баз можно сохранять в json
 def save_base_config(base_config: BaseConfig, config_dir: Path):
     """Сохранение конфигурации базы в файл"""
     config_path = config_dir / f"{base_config.name}.txt"
@@ -238,35 +225,6 @@ async def process_json(request: ProcessJsonRequest):
             "status": "error",
             "message": f"JSON processing error: {str(e)}"
         }
-
-# временно для обратной совместимости
-@app.post("/train")
-async def train_model(request: dict):
-    try:
-        base_name = request.get("base_name")
-        base_path = request.get("base_path") 
-        config_path = request.get("config_path")
-        model_type = request.get("model_type")
-        
-        return internal_train(base_name, base_path, config_path, model_type)
-        
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
-
-@app.post("/predict")
-async def predict_with_model(request: dict):
-    try:
-        file_path = request.get("file_path")
-        model_name = request.get("model_name") 
-        base_name = request.get("base_name")
-        
-        if not file_path or not model_name or not base_name:
-            return {"status": "error", "message": "Missing required parameters"}
-        
-        return internal_predict(file_path, model_name, base_name)
-        
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
 
 @app.get("/config")
 async def get_server_config():

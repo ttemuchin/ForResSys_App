@@ -86,8 +86,7 @@ bool HttpClient::healthCheck() {
         Json::Reader reader;
         
         if (reader.parse(response, json)) {
-            return json["status"].asString() == "healthy" && 
-                   json["model_loaded"].asBool();
+            return json["status"].asString() == "healthy";// && json["model_loaded"].asBool()
         }
     } catch (...) {
         // Ignore errors, return false

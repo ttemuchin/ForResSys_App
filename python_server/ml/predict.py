@@ -99,6 +99,39 @@ def save_predictions(all_preds, all_targets, file_path, model_name, base_name, m
     
     return str(output_path)
 
+def save_main_predictions(all_preds, file_path, model_name, base_name):
+    """
+    ML Predicted Results(short):
+    Y1 pred1_sample1 pred1_sample2 ... pred1_sampleN
+    Y2 pred2_sample1 pred2_sample2 ... pred2_sampleN
+    """
+    try:
+        input_path = Path(file_path)
+        input_filename = input_path.stem
+        output_filename = f"{input_filename}_{model_name}_{base_name}_out.txt"
+        output_path = input_path.parent / output_filename
+        
+        preds_transposed = all_preds.T
+        
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write("ML Predicted Results:\n")
+            
+            for target_idx in range(preds_transposed.shape[0]):
+                f.write(f"Y{target_idx + 1}")
+                
+                for sample_idx in range(preds_transposed.shape[1]):
+                    f.write(f" {preds_transposed[target_idx, sample_idx]:.6f}")
+                
+                f.write("\n")
+        
+        # logger.info(f"Simplified predictions saved to: {output_path}")
+        return str(output_path)
+        
+    except Exception as e:
+        # logger.error(f"Error saving simplified predictions: {str(e)}")
+        raise Exception(f"Error saving simplified predictions: {str(e)}")
+        # return None
+
 def safe_r2_score(y_true, y_pred):
     """Безопасное вычисление R2-score"""
     try:
@@ -127,7 +160,7 @@ def pred(file_path, model_name, base_name):
     test_data = parse_data_file(file_path)
     x_test, y_test = splitSamples(test_data)
     
-    # Проверки соответствие размеров
+    # Проверки на соответствие размеров
     if len(x_test) != num_features_x:
         raise Exception(f"Feature count mismatch: config has {num_features_x}, data has {len(x_test)}")
     
@@ -181,5 +214,6 @@ def pred(file_path, model_name, base_name):
     }
     
     output_path = save_predictions(all_preds, all_targets, file_path, model_name, base_name, metrics)
+    _ = save_main_predictions(all_preds, file_path, model_name, base_name)
     
     return output_path, metrics

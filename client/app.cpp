@@ -52,9 +52,7 @@ public:
             
             logger_.info("Python server: " + python_path_);
             logger_.info("Server script: " + server_script_);
-            logger_.info("Learning base dir: " + learning_base_dir_);
-
-            // createDirectories(); точно лишнее?
+            logger_.info("Learning base dir: " + learning_base_dir_);         
 
         } else {
             logger_.error("Failed to load config from: " + getExePath() + "\\app_config.ini");
@@ -180,18 +178,18 @@ private:
 
     bool sendJsonToServer(const std::string& json_file_path) {
         if (!fs::exists(json_file_path)) {
-            std::cout << "✗ JSON file not found: " << json_file_path << std::endl;
+            std::cout << "Err: JSON file not found: " << json_file_path << std::endl;
             return false;
         }
         
         std::string json_content = readJsonFile(json_file_path);
         if (json_content.empty()) {
-            std::cout << "✗ Failed to read JSON file or file is empty" << std::endl;
+            std::cout << "Err: Failed to read JSON file or file is empty" << std::endl;
             return false;
         }
         
         if (!http_client_.healthCheck()) {
-            std::cout << "✗ Server is not available. Please start the server first." << std::endl;
+            std::cout << "Err: Server is not available. Please start the server first." << std::endl;
             return false;
         }
         
@@ -202,7 +200,7 @@ private:
         Json::Reader reader;
         
         if (!reader.parse(json_content, request_json)) {
-            std::cout << "✗ Invalid JSON format" << std::endl;
+            std::cout << "Err: Invalid JSON format" << std::endl;
             return false;
         }
         
@@ -221,7 +219,7 @@ private:
         if (response_reader.parse(response, response_json)) {
             if (response_json["status"].asString() == "error" || 
                 response_json.isMember("status") && response_json["status"].asString() == "error") {
-                std::cout << "✗ Server returned error: " << response_json["message"].asString() << std::endl;
+                std::cout << "Err: Server returned error: " << response_json["message"].asString() << std::endl;
                 return false;
             }
             
@@ -251,7 +249,7 @@ private:
             }
         }
         
-        std::cout << "✓ Request processed by server" << std::endl;
+        std::cout << "Request processed by server" << std::endl;
         std::cout << "Response: " << response << std::endl;
         return false;
     }
@@ -284,10 +282,10 @@ public:
         std::this_thread::sleep_for(std::chrono::seconds(3));
         
         if (waitForServer(10)) {
-            std::cout << "✓ Server started successfully!" << std::endl;
+            std::cout << "Server started successfully!" << std::endl;
             logger_.info("Python server started successfully on localhost:8000");
         } else {
-            std::cerr << "✗ Server failed to start!" << std::endl;
+            std::cerr << "Err: Server failed to start!" << std::endl;
             logger_.error("Python server failed to start");
             server_running_ = false;
         }
@@ -342,6 +340,53 @@ public:
         std::cout << "Server stopped" << std::endl;
     }
     
+    int processBatchMode(const std::vector<std::string>& json_paths) {
+        std::cout << "=== ResSysML v2.2 (Batch Mode) ===" << std::endl;
+
+        startServer();
+        
+        if (!waitForServer(10)) {
+            std::cout << "Err: Server failed to start. Cannot process JSON files." << std::endl;
+            stopServer();
+            return 1;
+        }
+
+        int success_count = 0;
+        int total_files = static_cast<int>(json_paths.size());
+        
+        for (size_t i = 0; i < json_paths.size(); i++) {
+            const std::string& json_path = json_paths[i];
+            
+            std::cout << "Processing: " << json_path << std::endl;
+            
+            logger_.info("Processing JSON file [" + std::to_string(i + 1) + 
+                        "/" + std::to_string(total_files) + "]: " + json_path);
+            
+            bool success = sendJsonToServer(json_path);
+            
+            if (success) {
+                success_count++;
+                std::cout << "  File processed successfully" << std::endl;
+                
+                if (i < json_paths.size() - 1) {
+                    std::this_thread::sleep_for(std::chrono::seconds(1));
+                }
+            } else {
+                std::cout << "  Failed to process file" << std::endl;
+                // при ошибке прерываем процесс, но можно убрать следующие строки для продолжения
+                std::cout << "  Aborting batch processing due to error. Check Logs" << std::endl;
+                stopServerSoft();
+                return 1;
+            }
+        }
+        
+        std::cout << "Operation completed, don't worry, server is off" << std::endl;
+        
+        stopServerSoft();
+        
+        return (success_count == total_files) ? 0 : 1;
+    }
+    
     void run() {
         logger_.info("ResSysML Application v2.2 started");
         std::cout << "=== ResSysML v2.2 ===" << std::endl;
@@ -358,7 +403,6 @@ public:
                 continue;
             }
             
-            // Команды
             if (input == "help" || input == "?") {
                 showHelp();
                 continue;
@@ -378,9 +422,9 @@ public:
             bool success = sendJsonToServer(input);
         
             if (success) {
-                std::cout << "\n✓ Operation completed successfully!" << std::endl;
+                std::cout << "\nOperation completed successfully!" << std::endl;
             } else {
-                std::cout << "\n✗ Operation failed. Check logs for details." << std::endl;
+                std::cout << "\nErr: Operation failed. Check logs for details." << std::endl;
             }
         }
         
@@ -390,9 +434,49 @@ public:
     }
 };
 
-int main() {
+int main(int argc, char* argv[]) {
     SetConsoleOutputCP(CP_UTF8);
     MLApplication app;
+    if (argc == 2 || argc == 3) {
+        std::vector<std::string> json_paths;
+        bool all_files_valid = true;
+        
+        for (int i = 1; i < argc; i++) {
+            std::string path = argv[i];
+            
+            if (!fs::exists(path)) {
+                std::cerr << "  File not found: " << path << std::endl;
+                all_files_valid = false;
+                break;
+            }
+            
+            size_t dot_pos = path.find_last_of('.');
+            if (dot_pos != std::string::npos) {
+                std::string ext = path.substr(dot_pos);
+                std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+                if (ext != ".json") {
+                    std::cout << "  Warning: File '" << path << "' doesn't have .json extension" << std::endl;
+                }
+            } else {
+                std::cout << "  Warning: File '" << path << "' has no extension" << std::endl;
+            }
+            
+            json_paths.push_back(path);
+        }
+        
+        if (!all_files_valid) {
+            return 1;
+        }
+        
+        return app.processBatchMode(json_paths);
+        
+    } else if (argc > 3) {
+        std::cerr << "Usage: " << argv[0] << " [json_file1] [json_file2]" << std::endl;
+        std::cerr << "  If no arguments: interactive mode" << std::endl;
+        std::cerr << "  If 1 or 2 json files provided: batch mode" << std::endl;
+        return 1;
+    }
+    
     app.run();
     return 0;
 }

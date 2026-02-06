@@ -3,6 +3,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 import numpy as np
 import math
+import json
 import sys, os
 from pathlib import Path
 from sklearn.metrics import r2_score, mean_squared_error
@@ -28,7 +29,7 @@ def get_weights_path(base_name, model_name):
 def get_model_config_path(base_name):
     """Путь к конфигу базы"""
     learning_base_dir = Path(os.path.dirname(__file__)).parent.parent / "data" / "LearningBase"
-    config_path = learning_base_dir / "Configs" / f"{base_name}.txt"
+    config_path = learning_base_dir / "Configs" / f"{base_name}.json"
     
     if not config_path.exists():
         raise Exception(f"Config file not found: {config_path}")
@@ -36,15 +37,10 @@ def get_model_config_path(base_name):
     return config_path
 
 def parse_config(config_path):
-    """Парсим конфигурационный файл"""
-    config = {}
+    """Парсим JSON конфигурационный файл"""
     with open(config_path, 'r') as f:
-        for line in f:
-            line = line.strip()
-            if line and '=' in line:
-                key, value = line.split('=', 1)
-                config[key.strip()] = value.strip()
-    return config
+        config_data = json.load(f)
+    return config_data
 
 def create_model(model_name, input_dims, num_targets):
     """Создаем модель по названию"""
@@ -103,6 +99,39 @@ def save_predictions(all_preds, all_targets, file_path, model_name, base_name, m
     
     return str(output_path)
 
+def save_main_predictions(all_preds, file_path, model_name, base_name):
+    """
+    ML Predicted Results(short):
+    Y1 pred1_sample1 pred1_sample2 ... pred1_sampleN
+    Y2 pred2_sample1 pred2_sample2 ... pred2_sampleN
+    """
+    try:
+        input_path = Path(file_path)
+        input_filename = input_path.stem
+        output_filename = f"{input_filename}_{model_name}_{base_name}_out.txt"
+        output_path = input_path.parent / output_filename
+        
+        preds_transposed = all_preds.T
+        
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write("ML Predicted Results:\n")
+            
+            for target_idx in range(preds_transposed.shape[0]):
+                f.write(f"Y{target_idx + 1}")
+                
+                for sample_idx in range(preds_transposed.shape[1]):
+                    f.write(f" {preds_transposed[target_idx, sample_idx]:.6f}")
+                
+                f.write("\n")
+        
+        # logger.info(f"Simplified predictions saved to: {output_path}")
+        return str(output_path)
+        
+    except Exception as e:
+        # logger.error(f"Error saving simplified predictions: {str(e)}")
+        raise Exception(f"Error saving simplified predictions: {str(e)}")
+        # return None
+
 def safe_r2_score(y_true, y_pred):
     """Безопасное вычисление R2-score"""
     try:
@@ -124,14 +153,14 @@ def pred(file_path, model_name, base_name):
     config_path = get_model_config_path(base_name)
     
     config = parse_config(config_path)
-    num_features_x = int(config['num_features_x'])
-    x_lengths = list(map(int, config['x_lengths'].split(',')))
-    num_targets_y = int(config['num_targets_y'])
+    num_features_x = config['nX']   #int(config['num_features_x'])
+    x_lengths = config['dimension'] #list(map(int, config['x_lengths'].split(',')))
+    num_targets_y = config['nY']    #int(config['num_targets_y'])
     
     test_data = parse_data_file(file_path)
     x_test, y_test = splitSamples(test_data)
     
-    # Проверки соответствие размеров
+    # Проверки на соответствие размеров
     if len(x_test) != num_features_x:
         raise Exception(f"Feature count mismatch: config has {num_features_x}, data has {len(x_test)}")
     
@@ -185,5 +214,6 @@ def pred(file_path, model_name, base_name):
     }
     
     output_path = save_predictions(all_preds, all_targets, file_path, model_name, base_name, metrics)
+    _ = save_main_predictions(all_preds, file_path, model_name, base_name)
     
     return output_path, metrics

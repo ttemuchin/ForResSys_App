@@ -2,49 +2,66 @@ from pathlib import Path
 import sys
 import os
 import signal
+import json
+import shutil
+from typing import Dict, Any, Optional, List
 sys.path.append(os.path.join(os.path.dirname(__file__), 'site-packages'))
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, status, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+
 from pydantic import BaseModel, Field
 import math
-from typing import List, Optional, Dict, Any
 import uvicorn
 import logging
 from datetime import datetime
 
-from config import HOST, PORT, DEBUG, MODEL_CONFIG
-from moked_model import model
+from config import HOST, PORT, DEBUG, MODEL_CONFIG, DATA_DIR, MODELS_DIR, OUTPUT_DIR
 import ml.predict as PRED
 import ml.train as TRAIN
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("PY_Server")
 
-# Модели Pydantic для валидации
-# ???
-class PredictionRequest(BaseModel):
-    input_data: str = Field(..., description="Входные данные для обработки")
-    parameters: Optional[Dict[str, Any]] = Field(
-        default=None, 
-        description="Дополнительные параметры обработки"
-    )
+# Модели Pydantic для валидации JSON запросов
+class BaseConfig(BaseModel):
+    name: str
+    N: int  # num_samples
+    nY: int  # num_targets_y
+    accuracy: list[float]
+    nX: int  # num_features_x
+    dimension: list[int]
 
-class BatchPredictionRequest(BaseModel):
-    inputs: List[str] = Field(..., description="Список входных данных")
-    batch_size: Optional[int] = Field(default=10, ge=1, le=100)
+class TrainRequest(BaseModel):
+    method: str = "train"
+    model: str
+    baseConfig: BaseConfig
+    basePath: str
+    hyperparameters: Optional[Dict[str, Any]] = None
+    target_metrics: Optional[Dict[str, float]] = None
 
-class HealthResponse(BaseModel):
-    status: str
-    model_loaded: bool
-    server_time: str
-    model_info: Dict[str, Any]
+class PredictRequest(BaseModel):
+    method: str = "predict"
+    model: str
+    baseName: str
+    predPath: str
+    # output_format: str = "txt"
+    # include_metrics: bool = True
+
+class ProcessJsonRequest(BaseModel):
+    json_data: Dict[str, Any]
+
+# class HealthResponse(BaseModel):
+#     status: str
+#     model_loaded: bool
+#     server_time: str
+#     model_info: Dict[str, Any]
 
 # init FastAPI
 app = FastAPI(
     title="ML Model Server",
-    description="Сервер для обработки ML моделей",
-    version="1.0.0",
+    description="Сервер для обучения и инференса моделей регрессионного анализа",
+    version="2.2.0",
     docs_url="/docs",
     redoc_url="/redoc"
 )
@@ -62,33 +79,57 @@ app.add_middleware(
 async def root():
     return {"message": "ML Model Server is running"}
 
-@app.get("/health", response_model=HealthResponse)
+@app.get("/health") #, response_model=HealthResponse
 async def health_check():
-    """Проверка статуса сервера и модели"""
-    return {
-        "status": "healthy",
-        "model_loaded": model.is_loaded,
-        "server_time": datetime.now().isoformat(),
-        "model_info": model.get_model_info()
-    }
+    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
 
-@app.get("/model/info")
-async def get_model_info():
-    """Получение информации о модели"""
-    return model.get_model_info()
+#  конфиги баз можно сохранять в json
+def save_base_config(base_config: BaseConfig, config_dir: Path):
+    """Сохранение конфигурации базы в JSON файл"""
+    config_path = config_dir / f"{base_config.name}.json"
+    config_data = base_config.dict()
+    
+    with open(config_path, 'w', encoding='utf-8') as f:
+        json.dump(config_data, f, indent=2, ensure_ascii=False)
+    
+    return str(config_path)
 
-@app.post("/train")
-async def train_model(request: dict):
+def upload_learning_base(base_config: BaseConfig, base_path: str):
     try:
-        base_name = request.get("base_name")
-        base_path = request.get("base_path") 
-        config_path = request.get("config_path")
-        model_type = request.get("model_type")
+        learning_base_dir = DATA_DIR / "LearningBase"
+        # logger.error(f"DATA_DIR: {DATA_DIR}")
+        config_dir = learning_base_dir / "Configs"
+        learning_base_dir.mkdir(parents=True, exist_ok=True)
+        config_dir.mkdir(parents=True, exist_ok=True)
         
-        best_loss, weights_path, best_r2 = TRAIN.train(base_name, base_path, config_path, model_type)
+        if not os.path.exists(base_path):
+            raise FileNotFoundError(f"Training file not found: {base_path}")
         
-        logger.info(f"\nTrain finished \nBest Loss = {best_loss}\nBest R2-score = {best_r2} \n")
+        dest_path = learning_base_dir / f"{base_config.name}.txt"
+        shutil.copy2(base_path, dest_path)
+        
+        config_path = save_base_config(base_config, config_dir)
+        
+        logger.info(f"Learning base uploaded: {base_config.name}")
+        return {
+            "status": "success",
+            "base_name": base_config.name,
+            "base_path": str(dest_path),
+            "config_path": config_path
+        }
+        
+    except Exception as e:
+        logger.error(f"Error uploading learning base: {str(e)}")
+        return {"status": "error", "message": str(e)}
 
+def internal_train(base_name: str, base_path: str, config_path: str, model_type: str):
+    try:
+        best_loss, weights_path, best_r2 = TRAIN.train(
+            base_name, base_path, config_path, model_type
+        )
+        
+        logger.info(f"\nTrain finished \nBest Loss = {best_loss}\nBest R2-score = {best_r2}\n")
+        
         return {
             "status": "success",
             "message": f"Training completed for {base_name}",
@@ -99,18 +140,11 @@ async def train_model(request: dict):
         }
         
     except Exception as e:
+        logger.error(f"Training error: {str(e)}")
         return {"status": "error", "message": str(e)}
 
-@app.post("/predict")
-async def predict_with_model(request: dict):
+def internal_predict(file_path: str, model_name: str, base_name: str):
     try:
-        file_path = request.get("file_path")
-        model_name = request.get("model_name") 
-        base_name = request.get("base_name")
-        
-        if not file_path or not model_name or not base_name:
-            return {"status": "error", "message": "Missing required parameters"}
-        
         output_path, metrics = PRED.pred(file_path, model_name, base_name)
         logger.info(f"\nPredict finished\n Metrics:\n{metrics}\n")
         
@@ -122,7 +156,74 @@ async def predict_with_model(request: dict):
         }
         
     except Exception as e:
+        logger.error(f"Prediction error: {str(e)}")
         return {"status": "error", "message": str(e)}
+
+@app.post("/process_json")
+async def process_json(request: ProcessJsonRequest):
+    """Принимает JSON, выполняет train или predict"""
+    try:
+        json_data = request.json_data
+        method = json_data.get("method")
+        
+        if method == "train":
+            # Валидация
+            train_req = TrainRequest(**json_data)
+            
+            # 1
+            upload_result = upload_learning_base(
+                train_req.baseConfig, 
+                train_req.basePath
+            )
+            
+            if upload_result["status"] == "error":
+                return upload_result
+            
+            # 2
+            base_name = train_req.baseConfig.name
+            base_path = upload_result["base_path"]
+            config_path = upload_result["config_path"]
+            
+            train_result = internal_train(
+                base_name, 
+                base_path, 
+                config_path, 
+                train_req.model
+            )
+            
+            return {
+                "operation": "train",
+                "upload_result": upload_result,
+                "train_result": train_result
+            }
+            
+        elif method == "predict":
+            # Валидация
+            predict_req = PredictRequest(**json_data)
+            
+            predict_result = internal_predict(
+                predict_req.predPath,
+                predict_req.model,
+                predict_req.baseName
+            )
+            
+            return {
+                "operation": "predict",
+                "predict_result": predict_result
+            }
+            
+        else:
+            return {
+                "status": "error",
+                "message": f"Unknown method: {method}. Use 'train' or 'predict'"
+            }
+            
+    except Exception as e:
+        logger.error(f"Error processing JSON: {str(e)}")
+        return {
+            "status": "error",
+            "message": f"JSON processing error: {str(e)}"
+        }
 
 @app.get("/config")
 async def get_server_config():
@@ -133,8 +234,14 @@ async def get_server_config():
             "port": PORT,
             "debug": DEBUG
         },
-        "model_config": MODEL_CONFIG
+        "model_config": MODEL_CONFIG,
+        "paths": {
+            "data_dir": str(DATA_DIR),
+            "models_dir": str(MODELS_DIR),
+            "weights_dir": str(OUTPUT_DIR)
+        }
     }
+
 @app.post("/shutdown")
 async def shutdown_server():
     """Эндпоинт для graceful shutdown"""

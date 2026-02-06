@@ -7,6 +7,9 @@
 #include <vector>
 #include <sstream>
 #include <algorithm>
+#include <json/json.h>
+#include <json/value.h>
+#include <json/reader.h>
 #include "http_client.h"
 #include "config_loader.h"
 #include "logger.h"
@@ -30,83 +33,8 @@ private:
     std::string app_base_dir_;
     std::string python_path_;
     std::string server_script_;
-    std::string output_file_;
     std::string learning_base_dir_;
 
-    struct JobConfig {
-        std::string base_config;// "BaseName 100 2 0.001 0.005 2 400 60"
-        std::string training_file_path;
-        std::string model_name;
-        std::string prediction_file_path;
-    };
-
-    std::vector<std::string> findLearningBases() {
-        std::vector<std::string> bases;
-        try {
-            if (!fs::exists(learning_base_dir_)) {
-                return bases;
-            }
-            
-            for (const auto& entry : fs::directory_iterator(learning_base_dir_)) {
-                if (entry.is_regular_file() && entry.path().extension() == ".txt") {
-                    bases.push_back(entry.path().stem().string());
-                }
-            }
-        } catch (const std::exception& e) {
-            std::cerr << "Error scanning learning bases: " << e.what() << std::endl;
-        }
-        return bases;
-    }
-
-    std::string getLearningBasePath(const std::string& base_name) {
-        return learning_base_dir_ + "\\" + base_name + ".txt";
-    }
-
-    std::string getLearningBaseConfigPath(const std::string& base_name) {
-        return learning_base_dir_ + "\\Configs\\" + base_name + ".txt";
-    }
-
-    bool parseJobConfig(const std::string& config_file_path, JobConfig& job_config) {
-        try {
-            std::ifstream file(config_file_path);
-            if (!file.is_open()) {
-                logger_.error("Cannot open config file: " + config_file_path);
-                return false;
-            }
-            
-            std::vector<std::string> lines;
-            std::string line;
-            while (std::getline(file, line)) {
-                if (!line.empty() && line[0] != '#') {
-                    lines.push_back(line);
-                }
-            }
-            file.close();
-            
-            if (lines.size() < 4) {
-                logger_.error("Config file must contain exactly 4 lines");
-                return false;
-            }
-            
-            job_config.base_config = lines[0];
-            job_config.training_file_path = lines[1];
-            job_config.model_name = lines[2];
-            job_config.prediction_file_path = lines[3];
-            
-            logger_.info("Job config parsed successfully");
-            logger_.info("Base config: " + job_config.base_config);
-            logger_.info("Training file: " + job_config.training_file_path);
-            logger_.info("Model: " + job_config.model_name);
-            logger_.info("Prediction file: " + job_config.prediction_file_path);
-            
-            return true;
-            
-        } catch (const std::exception& e) {
-            logger_.error("Error parsing job config: " + std::string(e.what()));
-            return false;
-        }
-    }
-    
 public:
     MLApplication()
     : logger_(false),
@@ -120,18 +48,214 @@ public:
         if (config_.load()) {
             python_path_ = app_base_dir_ + "\\" + config_.getString("paths", "python_path");
             server_script_ = app_base_dir_ + "\\" + config_.getString("paths", "server_script");
-            output_file_ = app_base_dir_ + "\\" + config_.getString("paths", "output_file");
             learning_base_dir_ = app_base_dir_+ "\\data\\LearningBase";
             
-            logger_.info("Python path: " + python_path_);
+            logger_.info("Python server: " + python_path_);
             logger_.info("Server script: " + server_script_);
-            logger_.info("Learning base dir: " + learning_base_dir_);
+            logger_.info("Learning base dir: " + learning_base_dir_);         
 
         } else {
             logger_.error("Failed to load config from: " + getExePath() + "\\app_config.ini");
         }
     }
 
+private:
+    void createDirectories() {
+        std::vector<std::string> dirs = {
+            learning_base_dir_ + "\\Configs",
+            app_base_dir_ + "\\output",
+            app_base_dir_ + "\\logs",
+            app_base_dir_ + "\\models"
+        };
+        
+        for (const auto& dir : dirs) {
+            fs::create_directories(dir);
+        }
+    }
+
+    void showHelp() {
+        std::cout << "\n=== Available commands: ===" << std::endl;
+        std::cout << "  help             - Show this help message" << std::endl;
+        std::cout << "  view bases       - List available(saved) training bases" << std::endl;
+        std::cout << "  json help        - Show JSON configuration examples" << std::endl;
+        std::cout << "  exit (quit or q) - Exit application" << std::endl;
+        std::cout << "\nBasic usage:" << std::endl;
+        std::cout << "  1. Create a JSON configuration file" << std::endl;
+        std::cout << "  2. Enter path to JSON file when prompted" << std::endl;
+        std::cout << "  3. Server will process train/predict automatically" << std::endl;
+    }
+
+    void showJsonHelp() {
+        std::cout << "\n=== JSON Configuration Examples ===" << std::endl;
+        
+        std::cout << "\n1. Training (e.g. train.json):" << std::endl;
+        std::cout << R"({
+  "method": "train",
+  "model": "convolutional",
+  "baseConfig": {
+    "name": "BaseTEST5",
+    "N": 100,
+    "nY": 2,
+    "accuracy": [0.001, 0.005],
+    "nX": 2,
+    "dimension": [400, 60]
+  },
+  "basePath": "C:/path/to/training_data.txt"
+})" << std::endl;
+        
+        std::cout << "\n2. Prediction (e.g. predict.json):" << std::endl;
+        std::cout << R"({
+  "method": "predict",
+  "model": "convolutional",
+  "baseName": "BaseTEST5",
+  "predPath": "C:/path/to/prediction_data.txt"
+})" << std::endl;
+        
+        std::cout << "\nSupported models: svr, convolutional, linear_regression" << std::endl;
+    }
+
+    void viewBases() {
+        std::vector<std::string> bases = findLearningBases();
+        
+        if (bases.empty()) {
+            std::cout << "No training bases found." << std::endl;
+            std::cout << "Use 'train' method in JSON to create a new base." << std::endl;
+            return;
+        }
+        
+        std::cout << "\n=== Available Training Bases ===" << std::endl;
+        for (size_t i = 0; i < bases.size(); ++i) {
+            std::cout << "  " << (i + 1) << ". " << bases[i] << std::endl;
+            
+            // ! ВАЖНО ! т к в дальнейшем нужно будет вытащить из JSON только поле с количеством семплов
+            std::string config_path = learning_base_dir_ + "\\Configs\\" + bases[i] + ".txt";
+            if (fs::exists(config_path)) {
+                std::ifstream config_file(config_path);
+                std::string line;
+                std::cout << "     Config: ";
+                while (std::getline(config_file, line)) {
+                    std::cout << line << " ";
+                }
+                std::cout << std::endl;
+            }
+        }
+    }
+    
+    std::vector<std::string> findLearningBases() {
+        std::vector<std::string> bases;
+        try {
+            if (!fs::exists(learning_base_dir_)) {
+                return bases;
+            }
+            
+            for (const auto& entry : fs::directory_iterator(learning_base_dir_)) {
+                if (entry.is_regular_file() && entry.path().extension() == ".txt") {
+                    bases.push_back(entry.path().stem().string());
+                }
+            }
+        } catch (const std::exception& e) {
+            logger_.error("Error scanning learning bases: " + std::string(e.what()));
+        }
+        return bases;
+    }
+
+    std::string readJsonFile(const std::string& file_path) {
+        try {
+            std::ifstream file(file_path);
+            if (!file.is_open()) {
+                return "";
+            }
+            
+            std::stringstream buffer;
+            buffer << file.rdbuf();
+            return buffer.str();
+            
+        } catch (const std::exception& e) {
+            logger_.error("Error reading JSON file: " + std::string(e.what()));
+            return "";
+        }
+    }
+
+    bool sendJsonToServer(const std::string& json_file_path) {
+        if (!fs::exists(json_file_path)) {
+            std::cout << "Err: JSON file not found: " << json_file_path << std::endl;
+            return false;
+        }
+        
+        std::string json_content = readJsonFile(json_file_path);
+        if (json_content.empty()) {
+            std::cout << "Err: Failed to read JSON file or file is empty" << std::endl;
+            return false;
+        }
+        
+        if (!http_client_.healthCheck()) {
+            std::cout << "Err: Server is not available. Please start the server first." << std::endl;
+            return false;
+        }
+        
+        std::cout << "\nSending JSON request to server..." << std::endl;
+        logger_.info("Sending JSON request from file: " + json_file_path);
+        
+        Json::Value request_json;
+        Json::Reader reader;
+        
+        if (!reader.parse(json_content, request_json)) {
+            std::cout << "Err: Invalid JSON format" << std::endl;
+            return false;
+        }
+        
+        Json::Value wrapper;
+        wrapper["json_data"] = request_json;
+        
+        Json::StreamWriterBuilder writer;
+        std::string json_request = Json::writeString(writer, wrapper);
+        
+        std::string response = http_client_.post("/process_json", json_request); // only one route
+        logger_.info("Server response: " + response);
+        
+        Json::Value response_json;
+        Json::Reader response_reader;
+        
+        if (response_reader.parse(response, response_json)) {
+            if (response_json["status"].asString() == "error" || 
+                response_json.isMember("status") && response_json["status"].asString() == "error") {
+                std::cout << "Err: Server returned error: " << response_json["message"].asString() << std::endl;
+                return false;
+            }
+            
+            // processing response
+            if (response_json.isMember("operation")) {
+                std::string operation = response_json["operation"].asString();
+                
+                if (operation == "train") {
+                    if (response_json.isMember("train_result") && 
+                        response_json["train_result"]["status"].asString() == "success") {
+                        std::cout << "  Training completed successfully!" << std::endl;
+                        auto train_result = response_json["train_result"];
+                        std::cout << "  R² score: " << train_result["best_r2"].asFloat() << std::endl;
+                        std::cout << "  Best loss: " << train_result["best_loss"].asFloat() << std::endl;
+                        std::cout << "  Weights saved to: " << train_result["weights_path"].asString() << std::endl;
+                        return true;
+                    }
+                } else if (operation == "predict") {
+                    if (response_json.isMember("predict_result") && 
+                        response_json["predict_result"]["status"].asString() == "success") {
+                        std::cout << "  Prediction completed successfully!" << std::endl;
+                        auto predict_result = response_json["predict_result"];
+                        std::cout << "  Results saved to: " << predict_result["output_path"].asString() << std::endl;
+                        return true;
+                    }
+                }
+            }
+        }
+        
+        std::cout << "Request processed by server" << std::endl;
+        std::cout << "Response: " << response << std::endl;
+        return false;
+    }
+
+
+public:
     void startServer() {
         if (!fs::exists(python_path_) || !fs::exists(server_script_)) {
             logger_.error("Python server files not found!");
@@ -149,7 +273,7 @@ public:
                          "\" && \"" + python_path_ + "\" \"" + server_script_ + "\""+
                          ">> \"" + python_log_path + "\" 2>&1";  // ПЕРЕНАПРАВЛЯЕМ ВСЕ В отдельный ЛОГ-файл
             
-                         logger_.debug("Executing server command: " + command);
+            logger_.debug("Executing server command: " + command);
             logger_.info("Python server logs will be saved to: " + python_log_path);
             std::system(command.c_str());
         });
@@ -158,10 +282,10 @@ public:
         std::this_thread::sleep_for(std::chrono::seconds(3));
         
         if (waitForServer(10)) {
-            std::cout << "✓ Server started successfully!" << std::endl;
+            std::cout << "Server started successfully!" << std::endl;
             logger_.info("Python server started successfully on localhost:8000");
         } else {
-            std::cerr << "✗ Server failed to start!" << std::endl;
+            std::cerr << "Err: Server failed to start!" << std::endl;
             logger_.error("Python server failed to start");
             server_running_ = false;
         }
@@ -200,6 +324,7 @@ public:
         }
         logger_.info("Server stopped gracefully");
     }
+
     void stopServer() {
         server_running_ = false;
         
@@ -215,322 +340,91 @@ public:
         std::cout << "Server stopped" << std::endl;
     }
     
-    bool makePrediction(const std::string& prediction_file_path, const std::string& model_name, const std::string& base_name) {
-        if (!http_client_.healthCheck()) {
-            logger_.error("Server not available for prediction");
-            return false;
+    int processBatchMode(const std::vector<std::string>& json_paths) {
+        std::cout << "=== ResSysML v2.2 (Batch Mode) ===" << std::endl;
+
+        startServer();
+        
+        if (!waitForServer(10)) {
+            std::cout << "Err: Server failed to start. Cannot process JSON files." << std::endl;
+            stopServer();
+            return 1;
         }
+
+        int success_count = 0;
+        int total_files = static_cast<int>(json_paths.size());
         
-        if (!fs::exists(prediction_file_path)) {
-            logger_.error("Prediction file not found: " + prediction_file_path);
-            return false;
-        }
-        
-        std::cout << "Making prediction..." << std::endl;
-        logger_.info("Starting prediction - File: " + prediction_file_path + ", Base: " + base_name + ", Model: " + model_name);
-        
-        std::string result = http_client_.predictWithModel(prediction_file_path, model_name, base_name);
-        logger_.info("Prediction server response: " + result);
-        
-        // Проверяем успешность предсказания по ответу сервера
-        if (result.find("\"status\":\"success\"") != std::string::npos) {
-            // Извлекаем путь к результату из JSON ответа
-            size_t path_start = result.find("\"output_path\":\"");
-            if (path_start != std::string::npos) {
-                path_start += 25; // Длина "\"output_path\":\""
-                size_t path_end = result.find("\"", path_start);
-                if (path_end != std::string::npos) {
-                    std::string output_path = result.substr(path_start, path_end - path_start);
-                    std::cout << "✓ Results saved to: " << output_path << std::endl;
+        for (size_t i = 0; i < json_paths.size(); i++) {
+            const std::string& json_path = json_paths[i];
+            
+            std::cout << "Processing: " << json_path << std::endl;
+            
+            logger_.info("Processing JSON file [" + std::to_string(i + 1) + 
+                        "/" + std::to_string(total_files) + "]: " + json_path);
+            
+            bool success = sendJsonToServer(json_path);
+            
+            if (success) {
+                success_count++;
+                std::cout << "  File processed successfully" << std::endl;
+                
+                if (i < json_paths.size() - 1) {
+                    std::this_thread::sleep_for(std::chrono::seconds(1));
                 }
+            } else {
+                std::cout << "  Failed to process file" << std::endl;
+                // при ошибке прерываем процесс, но можно убрать следующие строки для продолжения
+                std::cout << "  Aborting batch processing due to error. Check Logs" << std::endl;
+                stopServerSoft();
+                return 1;
             }
-            return true;
-        } else {
-            std::cout << "✗ Prediction failed!" << std::endl;
-            return false;
-        }
-    }
-    
-    void saveResultToFile(const std::string& result) {
-        fs::path output_path(output_file_);
-        fs::create_directories(output_path.parent_path());
-        
-        std::ofstream file(output_file_);
-        if (file.is_open()) {
-            file << "Prediction Result:\n";
-            file << "==================\n";
-            file << result << "\n";
-            file << "==================\n";
-            file.close();
-        }
-    }
-
-    struct LearningBaseConfig {
-        std::string name;
-        int num_samples;
-        int num_targets_y;
-        std::vector<double> y_precision;
-        int num_features_x;
-        std::vector<int> x_lengths;
-    };
-
-    bool parseLearningBaseConfig(const std::string& input, LearningBaseConfig& config) {
-        std::vector<std::string> tokens;
-        std::istringstream iss(input);
-        std::string token;
-        
-        while (iss >> token) {
-            tokens.push_back(token);
         }
         
-        if (tokens.size() < 4) {
-            std::cerr << "Error: Not enough parameters" << std::endl;
-            return false;
-        }
+        std::cout << "Operation completed, don't worry, server is off" << std::endl;
         
-        try {
-            // Collect all tokens
-            config.name = tokens[0];
-            
-            config.num_samples = std::stoi(tokens[1]);
-            
-            config.num_targets_y = std::stoi(tokens[2]);
-            
-            if (tokens.size() < 3 + config.num_targets_y + 1) {
-                std::cerr << "Error: Not enough precision values for Y" << std::endl;
-                return false;
-            }
-            
-            config.y_precision.clear();
-            for (int i = 0; i < config.num_targets_y; ++i) {
-                config.y_precision.push_back(std::stod(tokens[3 + i]));
-            }
-            
-            int current_index = 3 + config.num_targets_y;
-            if (tokens.size() <= current_index) {
-                std::cerr << "Error: Missing number of features X" << std::endl;
-                return false;
-            }
-            
-            config.num_features_x = std::stoi(tokens[current_index]);
-            current_index++;
-            
-            if (tokens.size() < current_index + config.num_features_x) {
-                std::cerr << "Error: Not enough length values for X" << std::endl;
-                return false;
-            }
-            
-            config.x_lengths.clear();
-            for (int i = 0; i < config.num_features_x; ++i) {
-                config.x_lengths.push_back(std::stoi(tokens[current_index + i]));
-            }
-            
-            if (tokens.size() != current_index + config.num_features_x) {
-                std::cerr << "Error: Too many parameters provided" << std::endl;
-                return false;
-            }
-            
-            return true;
-            
-        } catch (const std::exception& e) {
-            std::cerr << "Error parsing parameters: " << e.what() << std::endl;
-            return false;
-        }
-    }
-
-    bool copyLearningBaseFile(const std::string& source_path, const std::string& base_name) {
-        try {
-            fs::create_directories(learning_base_dir_);
-            
-            std::string dest_path = learning_base_dir_ + "\\" + base_name + ".txt";
-            
-            fs::copy_file(source_path, dest_path, fs::copy_options::overwrite_existing);
-            
-            return true;
-        } catch (const std::exception& e) {
-            std::cerr << "Error copying file: " << e.what() << std::endl;
-            return false;
-        }
-    }
-
-    bool saveLearningBaseConfig(const LearningBaseConfig& config) {
-        try {
-            std::string config_dir = learning_base_dir_ + "\\Configs";
-            fs::create_directories(config_dir);
-            
-            std::string config_path = config_dir + "\\" + config.name + ".txt";
-            std::ofstream file(config_path);
-            
-            if (!file.is_open()) {
-                return false;
-            }
-            
-            file << "name=" << config.name << "\n";
-            file << "num_samples=" << config.num_samples << "\n";
-            file << "num_targets_y=" << config.num_targets_y << "\n";
-            
-            file << "y_precision=";
-            for (size_t i = 0; i < config.y_precision.size(); ++i) {
-                file << config.y_precision[i];
-                if (i < config.y_precision.size() - 1) file << ",";
-            }
-            file << "\n";
-            
-            file << "num_features_x=" << config.num_features_x << "\n";
-            
-            file << "x_lengths=";
-            for (size_t i = 0; i < config.x_lengths.size(); ++i) {
-                file << config.x_lengths[i];
-                if (i < config.x_lengths.size() - 1) file << ",";
-            }
-            file << "\n";
-            
-            file.close();
-            return true;
-            
-        } catch (const std::exception& e) {
-            std::cerr << "Error saving config: " << e.what() << std::endl;
-            return false;
-        }
-    }
-
-    bool uploadLearningBase(const std::string& base_config, const std::string& training_file_path) {
-        LearningBaseConfig config;
+        stopServerSoft();
         
-        if (!parseLearningBaseConfig(base_config, config)) {
-            logger_.error("Failed to parse learning base config: " + base_config);
-            return false;
-        }
-        
-        logger_.info("Learning base config parsed successfully: " + config.name);
-        
-        if (!fs::exists(training_file_path)) {
-            logger_.error("Learning base file not found: " + training_file_path);
-            return false;
-        }
-        
-        if (!copyLearningBaseFile(training_file_path, config.name)) {
-            logger_.error("Failed to copy learning base file: " + training_file_path + " to " + config.name);
-            return false;
-        }
-        
-        if (!saveLearningBaseConfig(config)) {
-            logger_.error("Failed to save learning base config for: " + config.name);
-            return false;
-        }
-        
-        std::cout << "✓ Learning base " << config.name << " uploaded successfully!" << std::endl;
-        logger_.info("Learning base uploaded successfully: " + config.name);
-        return true;
-    }
-
-    ///////////
-    bool startLearning(const std::string& base_name, const std::string& model_name) {
-        std::string base_path = getLearningBasePath(base_name);
-        std::string config_path = getLearningBaseConfigPath(base_name);
-        
-        if (!fs::exists(base_path) || !fs::exists(config_path)) {
-            logger_.error("Selected learning base files not found: " + base_name);
-            return false;
-        }
-        
-        if (!http_client_.healthCheck()) {
-            logger_.error("Server not available for training");
-            return false;
-        }
-        
-        std::cout << "Starting learning process..." << std::endl;
-        logger_.info("Starting training - Base: " + base_name + ", Model: " + model_name);
-        
-        std::string response = http_client_.trainModel(base_name, base_path, config_path, model_name);
-        logger_.info("Training server response: " + response);
-        
-        // Проверяем успешность обучения по ответу сервера
-        if (response.find("\"status\":\"success\"") != std::string::npos) {
-            std::cout << "✓ Training completed successfully!" << std::endl;
-            return true;
-        } else {
-            std::cout << "✗ Training failed!" << std::endl;
-            return false;
-        }
-    }
-
-    bool executeJob(const std::string& config_file_path) {
-        JobConfig job_config;
-        
-        if (!parseJobConfig(config_file_path, job_config)) {
-            return false;
-        }
-        
-        LearningBaseConfig base_config_obj;
-        if (!parseLearningBaseConfig(job_config.base_config, base_config_obj)) {
-            return false;
-        }
-        
-        std::cout << "\n=== Starting ML Pipeline ===" << std::endl;
-        std::cout << "Base: " << base_config_obj.name << std::endl;
-        std::cout << "Model: " << job_config.model_name << std::endl;
-        std::cout << "Training file: " << job_config.training_file_path << std::endl;
-        std::cout << "Prediction file: " << job_config.prediction_file_path << std::endl;
-        
-        // 1. Загружаем обучающую базу
-        std::cout << "\n1. Uploading learning base..." << std::endl;
-        if (!uploadLearningBase(job_config.base_config, job_config.training_file_path)) {
-            return false;
-        }
-        
-        // 2. Обучаем модель
-        std::cout << "\n2. Training model..." << std::endl;
-        if (!startLearning(base_config_obj.name, job_config.model_name)) {
-            return false;
-        }
-        
-        // 3. Делаем предсказание
-        std::cout << "\n3. Making prediction..." << std::endl;
-        if (!makePrediction(job_config.prediction_file_path, job_config.model_name, base_config_obj.name)) {
-            return false;
-        }
-        
-        std::cout << "\n✓ Pipeline completed successfully!" << std::endl;
-        return true;
+        return (success_count == total_files) ? 0 : 1;
     }
     
     void run() {
-        logger_.info("ML Desktop Application v2.1 started");
-        std::cout << "ML Desktop Application v2.1" << std::endl;
+        logger_.info("ResSysML Application v2.2 started");
+        std::cout << "=== ResSysML v2.2 ===" << std::endl;
+        std::cout << "Type 'help' for available commands" << std::endl;
         
         startServer();
         
         while (true) {
-            std::cout << "\nEnter path to job config file (or 'exit' to quit):" << std::endl;
-            std::cout << "> ";
-            
+            std::cout << "\nEnter command or JSON file path: ";
             std::string input;
             std::getline(std::cin, input);
             
-            if (input == "exit" || input == "quit") {
-                break;
-            }
-            
-            if (!fs::exists(input)) {
-                std::cout << "✗ Config file not found: " << input << std::endl;
+            if (input.empty()) {
                 continue;
             }
             
-            bool success = executeJob(input);
-            
-            if (success) {
-                std::cout << "\n✓ Job completed successfully!" << std::endl;
-            } else {
-                std::cout << "\n✗ Job failed! Check logs for details." << std::endl;
+            if (input == "help" || input == "?") {
+                showHelp();
+                continue;
+            } 
+            else if (input == "view bases") {
+                viewBases();
+                continue;
             }
-            
-            std::cout << "\nNew predict? (y/n): ";
-            std::string answer;
-            std::getline(std::cin, answer);
-            
-            if (answer != "y" && answer != "Y") {
+            else if (input == "json help") {
+                showJsonHelp();
+                continue;
+            }
+            else if (input == "exit" || input == "quit" || input == "q") {
                 break;
+            }
+
+            bool success = sendJsonToServer(input);
+        
+            if (success) {
+                std::cout << "\nOperation completed successfully!" << std::endl;
+            } else {
+                std::cout << "\nErr: Operation failed. Check logs for details." << std::endl;
             }
         }
         
@@ -540,9 +434,49 @@ public:
     }
 };
 
-int main() {
+int main(int argc, char* argv[]) {
     SetConsoleOutputCP(CP_UTF8);
     MLApplication app;
+    if (argc == 2 || argc == 3) {
+        std::vector<std::string> json_paths;
+        bool all_files_valid = true;
+        
+        for (int i = 1; i < argc; i++) {
+            std::string path = argv[i];
+            
+            if (!fs::exists(path)) {
+                std::cerr << "  File not found: " << path << std::endl;
+                all_files_valid = false;
+                break;
+            }
+            
+            size_t dot_pos = path.find_last_of('.');
+            if (dot_pos != std::string::npos) {
+                std::string ext = path.substr(dot_pos);
+                std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+                if (ext != ".json") {
+                    std::cout << "  Warning: File '" << path << "' doesn't have .json extension" << std::endl;
+                }
+            } else {
+                std::cout << "  Warning: File '" << path << "' has no extension" << std::endl;
+            }
+            
+            json_paths.push_back(path);
+        }
+        
+        if (!all_files_valid) {
+            return 1;
+        }
+        
+        return app.processBatchMode(json_paths);
+        
+    } else if (argc > 3) {
+        std::cerr << "Usage: " << argv[0] << " [json_file1] [json_file2]" << std::endl;
+        std::cerr << "  If no arguments: interactive mode" << std::endl;
+        std::cerr << "  If 1 or 2 json files provided: batch mode" << std::endl;
+        return 1;
+    }
+    
     app.run();
     return 0;
 }

@@ -15,6 +15,7 @@ add_executable(ResSysML
 
 target_include_directories(ResSysML PRIVATE client)
 target_link_libraries(ResSysML PRIVATE ${CURL_LIBRARIES} JsonCpp::JsonCpp)
+target_link_libraries(ResSysML PRIVATE JsonCpp::JsonCpp)
 
 add_custom_command(TARGET ResSysML POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
